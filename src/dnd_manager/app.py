@@ -366,7 +366,15 @@ class WelcomeScreen(Screen):
         Binding("n", "new_character", "New Character"),
         Binding("o", "open_character", "Open Character"),
         Binding("q", "quit", "Quit"),
+        Binding("left", "prev_button", "Previous", show=False),
+        Binding("right", "next_button", "Next", show=False),
+        Binding("enter", "select_button", "Select", show=False),
     ]
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.selected_index = 0
+        self.button_ids = ["btn-new", "btn-open", "btn-quit"]
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -382,6 +390,37 @@ class WelcomeScreen(Screen):
             id="welcome-container",
         )
         yield Footer()
+
+    def on_mount(self) -> None:
+        """Focus the first button on mount."""
+        self._update_button_focus()
+
+    def _update_button_focus(self) -> None:
+        """Update which button appears focused."""
+        for i, btn_id in enumerate(self.button_ids):
+            btn = self.query_one(f"#{btn_id}", Button)
+            if i == self.selected_index:
+                btn.focus()
+
+    def action_prev_button(self) -> None:
+        """Move to previous button."""
+        self.selected_index = (self.selected_index - 1) % len(self.button_ids)
+        self._update_button_focus()
+
+    def action_next_button(self) -> None:
+        """Move to next button."""
+        self.selected_index = (self.selected_index + 1) % len(self.button_ids)
+        self._update_button_focus()
+
+    def action_select_button(self) -> None:
+        """Activate the currently selected button."""
+        btn_id = self.button_ids[self.selected_index]
+        if btn_id == "btn-new":
+            self.action_new_character()
+        elif btn_id == "btn-open":
+            self.action_open_character()
+        elif btn_id == "btn-quit":
+            self.action_quit()
 
     def action_new_character(self) -> None:
         """Create a new character."""
