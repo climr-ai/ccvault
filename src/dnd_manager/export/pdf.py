@@ -93,9 +93,13 @@ class PDFExporter:
             from weasyprint import HTML
         except ImportError:
             raise ImportError(
-                "weasyprint not installed. Run: pip install weasyprint\n"
-                "Note: weasyprint requires system dependencies. See: "
-                "https://doc.courtbouillon.org/weasyprint/stable/first_steps.html"
+                "PDF export requires weasyprint. Install with:\n"
+                "  uv tool install ccvault[pdf]  # or: pip install weasyprint\n\n"
+                "WeasyPrint requires system dependencies:\n"
+                "  macOS:   brew install pango libffi\n"
+                "  Ubuntu:  sudo apt install libpango-1.0-0 libpangoft2-1.0-0\n"
+                "  Windows: See https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#windows\n\n"
+                "Alternative: Use HTML export with --format html"
             )
 
         html_content = self.render_html(character)
@@ -119,6 +123,15 @@ class PDFExporter:
         html_content = self.render_html(character)
         output_path.write_text(html_content, encoding="utf-8")
         return output_path
+
+
+def is_pdf_available() -> bool:
+    """Check if PDF export is available (WeasyPrint installed)."""
+    try:
+        import weasyprint  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 # Convenience function

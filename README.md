@@ -14,13 +14,17 @@ A comprehensive CLI-based D&D 5e character manager supporting multiple rulesets 
 
 ## Installation
 
-### Quick Install (recommended)
+### macOS / Linux
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaredgiosinuff/dnd-manager/main/install.sh | bash
 ```
 
-This installs `uv` (if needed) and `ccvault` as a global tool.
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/jaredgiosinuff/dnd-manager/main/install.ps1 | iex
+```
 
 ### Manual Install
 
@@ -30,6 +34,9 @@ uv tool install git+https://github.com/jaredgiosinuff/dnd-manager
 
 # Or with pipx:
 pipx install git+https://github.com/jaredgiosinuff/dnd-manager
+
+# With PDF export support (requires system dependencies):
+uv tool install "ccvault[pdf] @ git+https://github.com/jaredgiosinuff/dnd-manager"
 ```
 
 ### For Development
@@ -38,7 +45,7 @@ pipx install git+https://github.com/jaredgiosinuff/dnd-manager
 git clone https://github.com/jaredgiosinuff/dnd-manager
 cd dnd-manager
 uv sync
-source .venv/bin/activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
 ## Usage

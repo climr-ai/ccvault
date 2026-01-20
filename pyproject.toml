@@ -29,12 +29,14 @@ dependencies = [
     "anthropic>=0.40",
     "openai>=1.0",
     "ollama>=0.4",
-    "weasyprint>=60.0",
     "python-dateutil>=2.8",
     "platformdirs>=4.0",
 ]
 
 [project.optional-dependencies]
+pdf = [
+    "weasyprint>=60.0",  # PDF export (requires system deps on Windows)
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -46,6 +48,7 @@ embeddings = [
     "sentence-transformers>=2.2.0",  # For semantic search (~80MB model)
 ]
 all = [
+    "weasyprint>=60.0",
     "sentence-transformers>=2.2.0",
 ]
 
