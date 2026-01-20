@@ -5193,7 +5193,7 @@ class MainDashboard(Screen):
         Binding("e", "edit", "Edit"),
         Binding("l", "level", "Level"),
         Binding("h", "homebrew", "Homebrew"),
-        Binding(",", "settings", "Settings"),
+        Binding(".", "settings", "Settings"),
         Binding("t", "short_rest", "Short Rest"),
         Binding("T", "long_rest", "Long Rest"),
         Binding("ctrl+s", "save", "Save"),
