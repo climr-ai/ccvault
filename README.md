@@ -1,4 +1,4 @@
-# D&D Character Manager
+# CCVault - D&D Character Manager
 
 A comprehensive CLI-based D&D 5e character manager supporting multiple rulesets with AI integration, dice rolling, and export capabilities.
 
@@ -6,61 +6,75 @@ A comprehensive CLI-based D&D 5e character manager supporting multiple rulesets 
 
 - **Multi-Ruleset Support**: D&D 5e 2014, D&D 5e 2024, and Tales of the Valiant
 - **Terminal UI**: Beautiful, responsive interface built with Textual
-- **AI Integration**: Chat with AI assistants (Claude, GPT, Ollama) about your characters
+- **AI Integration**: Chat with AI assistants (Gemini, Claude, GPT, Ollama) with full tool-calling
 - **YAML Storage**: Human-readable character files, git-friendly
 - **Dice Roller**: Full notation support with history
-- **Markdown Export**: Generate character sheets with Jinja2 templates
+- **PDF/Markdown Export**: Generate character sheets
 - **Custom Content**: Extensible system for homebrew content
 
 ## Installation
 
-```bash
-# Clone and install with uv (recommended)
-git clone https://github.com/yourusername/dnd-manager
-cd dnd-manager
-uv venv && source .venv/bin/activate
-uv pip install -e .
+### Quick Install (recommended)
 
-# Or with pip
-pip install -e .
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaredgiosinuff/dnd-manager/main/install.sh | bash
 ```
+
+This installs `uv` (if needed) and `ccvault` as a global tool.
+
+### Manual Install
+
+```bash
+# If you have uv installed:
+uv tool install git+https://github.com/jaredgiosinuff/dnd-manager
+
+# Or with pipx:
+pipx install git+https://github.com/jaredgiosinuff/dnd-manager
+```
+
+### For Development
+
+```bash
+git clone https://github.com/jaredgiosinuff/dnd-manager
+cd dnd-manager
+uv sync
+source .venv/bin/activate
+```
+
+## Usage
+
+```bash
+ccvault
+```
+
+That's it! The app will launch and guide you through setup.
 
 ## Quick Start
 
 ```bash
-# Launch the TUI
-dnd
+# Launch the app
+ccvault
 
-# Create a new character
-dnd new "Gandalf" --class Wizard
-
-# List all characters
-dnd list
-
-# Show character summary
-dnd show Gandalf
-
-# Export to Markdown
-dnd export Gandalf -o gandalf.md
-
-# Roll dice
-dnd roll 2d6+5
-dnd roll 4d6kh3        # Roll stats (keep highest 3)
-dnd roll adv           # Roll with advantage
-dnd roll 1d20+7 -n 5   # Roll 5 times
+# Or with specific commands:
+ccvault new "Gandalf" --class Wizard   # Create a character
+ccvault list                            # List all characters
+ccvault show Gandalf                    # Show character summary
+ccvault export Gandalf -o gandalf.md    # Export to Markdown
+ccvault roll 2d6+5                      # Roll dice
+ccvault ask "How does sneak attack work?"  # Ask the AI
 ```
 
 ## CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `dnd` | Launch the TUI |
-| `dnd run [file]` | Launch TUI with optional character file |
-| `dnd new <name>` | Create a new character |
-| `dnd list` | List all characters |
-| `dnd show <name>` | Display character summary |
-| `dnd export <name>` | Export character to Markdown |
-| `dnd roll <dice>` | Roll dice (e.g., `2d6+5`) |
+| `ccvault` | Launch the TUI |
+| `ccvault new <name>` | Create a new character |
+| `ccvault list` | List all characters |
+| `ccvault show <name>` | Display character summary |
+| `ccvault export <name>` | Export to Markdown/PDF |
+| `ccvault roll <dice>` | Roll dice (e.g., `2d6+5`) |
+| `ccvault ask <question>` | Ask the AI assistant |
 
 ## Keyboard Shortcuts (TUI)
 
