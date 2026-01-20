@@ -509,7 +509,7 @@ Footer {
 }
 
 .hp-display {
-    font-size: 14pt;
+    text-style: bold;
     padding: 1;
 }
 
@@ -523,7 +523,8 @@ Footer {
 
 .hp-editor-panel {
     width: 50;
-    margin: 0 auto;
+    margin: 0 2;
+    align: center middle;
 }
 
 /* Level Up Screen */
