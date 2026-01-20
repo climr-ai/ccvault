@@ -48,6 +48,18 @@ uv sync
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
+### Uninstall
+
+**macOS / Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaredgiosinuff/dnd-manager/main/uninstall.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/jaredgiosinuff/dnd-manager/main/uninstall.ps1 | iex
+```
+
 ## Usage
 
 ```bash
