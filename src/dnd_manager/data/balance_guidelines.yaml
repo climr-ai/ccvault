@@ -1,0 +1,422 @@
+# D&D 5e Homebrew Balance Guidelines
+# These guidelines help AI assistants provide balanced homebrew creation advice.
+# All values are configurable and can be overridden by users.
+
+version: "1.0"
+
+# =============================================================================
+# SPELL BALANCE GUIDELINES
+# =============================================================================
+spells:
+  description: |
+    Spells should follow established patterns for their level. Higher level spells
+    should be meaningfully more powerful, but not so much that they obsolete
+    lower-level options entirely.
+
+  damage_benchmarks:
+    description: "Expected single-target damage by spell level (save for half)"
+    cantrip: "1d10 (scales at 5th, 11th, 17th)"
+    level_1: "2d10 or 3d8"
+    level_2: "3d8 or 4d6"
+    level_3: "8d6 (Fireball sets the bar high)"
+    level_4: "6d8 to 8d8"
+    level_5: "8d8 to 10d6"
+    level_6: "10d6 to 12d6"
+    level_7: "10d8 to 12d8"
+    level_8: "12d6 to 14d6"
+    level_9: "20d6+ (9th level should feel epic)"
+
+  aoe_adjustment: |
+    Area of Effect spells typically deal less damage per target than single-target:
+    - Small AoE (15ft cube/cone): ~80% of single-target damage
+    - Medium AoE (20ft radius): ~70% of single-target damage
+    - Large AoE (30ft+ radius): ~60% of single-target damage
+
+  concentration_rules: |
+    - Powerful ongoing effects should require concentration
+    - Summon spells almost always require concentration
+    - Buffs that stack multiplicatively need concentration
+    - Instantaneous damage spells typically don't need concentration
+    - Duration without concentration: 1 minute = strong, 1 hour = moderate, 8 hours = weak effect
+
+  save_types:
+    common_by_effect:
+      damage_avoidance: "Dexterity"
+      mental_effects: "Wisdom"
+      physical_transformation: "Constitution"
+      illusions: "Intelligence (Investigation check)"
+      grapple_effects: "Strength or Dexterity (target's choice)"
+      death_effects: "Constitution (or Charisma for soul effects)"
+
+  red_flags:
+    - "Combining damage + control + no concentration"
+    - "Save-or-die effects below 7th level"
+    - "Permanent effects without costly components"
+    - "Bonus action spells that are too versatile"
+    - "Healing that outpaces damage at same level"
+    - "At-will effects that obsolete cantrips"
+
+  design_tips:
+    - "Spells should do one thing well, not everything"
+    - "Higher level versions should add options, not just more damage"
+    - "Ritual spells should be utility, not combat"
+    - "Upcasting should provide meaningful but not mandatory benefits"
+
+# =============================================================================
+# MAGIC ITEM BALANCE GUIDELINES
+# =============================================================================
+magic_items:
+  description: |
+    Magic items should enhance characters without making them overpowered.
+    Rarity indicates both power level and appropriate character level.
+
+  rarity_guidelines:
+    common:
+      character_level: "1+"
+      typical_effects:
+        - "Minor utility (light, prestidigitation-like effects)"
+        - "Small numeric bonuses (+1 to specific narrow uses)"
+        - "Convenience features (self-cleaning, temperature regulation)"
+      attunement: "Rarely required"
+      examples: "Potion of Healing, Candle of the Deep"
+
+    uncommon:
+      character_level: "1+"
+      typical_effects:
+        - "+1 weapons/armor/shields"
+        - "1/day low-level spell (1st-2nd level)"
+        - "Resistance to one damage type (situational)"
+        - "Advantage on specific saving throws"
+      attunement: "Sometimes required for active abilities"
+      examples: "Cloak of Protection, Bag of Holding, +1 Longsword"
+
+    rare:
+      character_level: "5+"
+      typical_effects:
+        - "+2 weapons/armor"
+        - "1/day mid-level spell (3rd-4th level)"
+        - "Permanent minor ability score increase (+1)"
+        - "Flight (limited duration or conditions)"
+      attunement: "Usually required"
+      examples: "Flame Tongue, Ring of Protection, Amulet of Health"
+
+    very_rare:
+      character_level: "11+"
+      typical_effects:
+        - "+3 weapons/armor"
+        - "1/day high-level spell (5th-6th level)"
+        - "Significant ability score increase (+2)"
+        - "Major resistances or immunities"
+      attunement: "Almost always required"
+      examples: "Staff of Power, Cloak of Invisibility, Manual of Bodily Health"
+
+    legendary:
+      character_level: "17+"
+      typical_effects:
+        - "Multiple powerful abilities"
+        - "1/day very high-level spell (7th-9th level)"
+        - "Game-changing passive abilities"
+        - "Often have drawbacks or curses"
+      attunement: "Required, often with restrictions"
+      examples: "Vorpal Sword, Staff of the Magi, Holy Avenger"
+
+    artifact:
+      character_level: "17+"
+      typical_effects:
+        - "Campaign-defining power"
+        - "Often sentient or semi-sentient"
+        - "Major boons AND significant drawbacks"
+        - "Unique destruction conditions"
+      attunement: "Required, often changes the character"
+      examples: "Hand of Vecna, Orb of Dragonkind, Book of Exalted Deeds"
+
+  attunement_rules: |
+    - Attunement limits power stacking (max 3 attuned items)
+    - Items that provide ongoing combat benefits should require attunement
+    - Consumables never require attunement
+    - Items with 1/day powers often require attunement
+
+  red_flags:
+    - "Uncommon items with +2 bonuses"
+    - "No-attunement items with powerful active abilities"
+    - "Items that grant extra actions/bonus actions"
+    - "Unlimited-use items that replicate 3rd+ level spells"
+    - "Items without charges that should have them"
+    - "Stacking bonuses with no caps"
+
+  design_tips:
+    - "Every powerful benefit should have a cost or limitation"
+    - "Charges create interesting resource decisions"
+    - "Cursed items should be fun, not punishing"
+    - "Flavor text makes items memorable"
+    - "Consider what happens when multiple party members have the item"
+
+# =============================================================================
+# RACE/SPECIES BALANCE GUIDELINES
+# =============================================================================
+races:
+  description: |
+    Races provide flavor and modest mechanical benefits. In 2024 rules,
+    ability scores come from backgrounds, not races.
+
+  trait_budget:
+    description: "Races typically have 4-6 'trait points' worth of features"
+    costs:
+      minor_trait: 1  # Darkvision 60ft, tool proficiency, language
+      moderate_trait: 2  # Skill proficiency, damage resistance, 30ft special movement
+      major_trait: 3  # Powerful once-per-rest ability, flight, spellcasting
+      defining_trait: 4  # Permanent flight, powerful at-will ability
+
+  common_traits:
+    - "Darkvision (60ft or 120ft)"
+    - "Skill proficiency (1-2 skills)"
+    - "Damage resistance (one type)"
+    - "Natural weapons (1d6 or less)"
+    - "Extra language"
+    - "Tool proficiency"
+    - "Minor spellcasting (cantrip + 1/day 1st level)"
+
+  ability_scores:
+    2014_rules: "+2 to one ability, +1 to another (or +1/+1/+1)"
+    2024_rules: "No racial ability bonuses (backgrounds provide these)"
+    tov_rules: "Lineage + Heritage split, no inherent bonuses"
+
+  red_flags:
+    - "More than +3 total to ability scores (2014 rules)"
+    - "Flight at 1st level without significant drawback"
+    - "Multiple damage resistances"
+    - "At-will spellcasting of leveled spells"
+    - "Traits that scale too well with class features"
+    - "Natural armor that exceeds 13 + DEX"
+
+  design_tips:
+    - "Every race should have a clear fantasy identity"
+    - "Mechanical traits should support the fantasy"
+    - "Avoid traits that only benefit one class"
+    - "Consider roleplay implications of unusual traits"
+    - "Subraces should feel distinct but balanced with each other"
+
+# =============================================================================
+# CLASS BALANCE GUIDELINES
+# =============================================================================
+classes:
+  description: |
+    Classes are complex and require careful balance. They should have a clear
+    identity and role while remaining viable throughout all levels.
+
+  hit_dice:
+    d6: "Full casters (Sorcerer, Wizard)"
+    d8: "Half casters, skill classes (Bard, Cleric, Druid, Monk, Rogue, Warlock)"
+    d10: "Martial half-casters (Fighter, Paladin, Ranger)"
+    d12: "Pure martial tanks (Barbarian)"
+
+  proficiencies:
+    full_caster: "Light armor or none, simple weapons, 2 saves (one common, one uncommon)"
+    half_caster: "Light and medium armor, martial weapons, 2 saves"
+    martial: "All armor, martial weapons, shields, 2 saves"
+
+  feature_progression:
+    level_1: "Core class identity (Fighting Style, Rage, Spellcasting, Sneak Attack)"
+    level_2: "Secondary core feature (Action Surge, Cunning Action, Wild Shape)"
+    level_3: "Subclass selection (standardized in 2024)"
+    level_5: "Major power spike (Extra Attack, 3rd-level spells)"
+    level_11: "Second major spike (third attack, 6th-level spells)"
+    level_20: "Capstone (should be exciting but not required)"
+
+  design_pillars:
+    - "Clear role in combat and exploration"
+    - "Meaningful choices at each level"
+    - "Multiple viable build paths"
+    - "Balanced with official classes at all tiers"
+
+  red_flags:
+    - "More than 2 'dead' levels in a row"
+    - "Front-loaded power that makes multiclassing too attractive"
+    - "Features that obsolete other classes' core abilities"
+    - "Mandatory feats or multiclassing to function"
+    - "Resource systems that are too complex or too simple"
+
+# =============================================================================
+# SUBCLASS BALANCE GUIDELINES
+# =============================================================================
+subclasses:
+  description: |
+    Subclasses customize a class's playstyle without replacing core features.
+    They should be balanced against each other within the same class.
+
+  feature_timing:
+    2014_rules:
+      early_subclass: "Cleric, Sorcerer, Warlock get subclass at 1"
+      standard: "Most classes at 3"
+      progression: "Varies by class (3/6/14, 3/7/15, etc.)"
+    2024_rules:
+      standard: "All classes get subclass at 3"
+      progression: "Standardized at 3/6/10/14"
+
+  power_budget:
+    level_3: "Defining feature that shapes playstyle"
+    level_6: "Defensive or utility feature"
+    level_10_11: "Significant combat or roleplay upgrade"
+    level_14_17: "Capstone, can be powerful"
+
+  red_flags:
+    - "Level 3 feature stronger than Extra Attack"
+    - "Features that don't synergize with base class"
+    - "Subclass that's strictly better than all others"
+    - "Features that require specific party composition"
+    - "Too many resources to track"
+
+  design_tips:
+    - "Each subclass should suggest a different playstyle"
+    - "Ribbon features add flavor without power creep"
+    - "Consider multiclass interactions"
+    - "Theme should be clear from the name"
+
+# =============================================================================
+# FEAT BALANCE GUIDELINES
+# =============================================================================
+feats:
+  description: |
+    Feats are optional rules that let characters specialize. They should be
+    roughly equivalent in power to a +2 ability score increase.
+
+  value_equivalents:
+    "+1 ASI": "Half a feat's power budget"
+    "+2 ASI": "Full feat's power budget (baseline)"
+    "Skill proficiency": "~0.25 of budget"
+    "Language": "~0.1 of budget"
+    "Cantrip": "~0.25 of budget"
+    "1/day 1st-level spell": "~0.5 of budget"
+    "Fighting Style": "~0.75 of budget"
+
+  categories:
+    origin_feats: "Available at 1st level, typically +1 ASI plus benefit"
+    general_feats: "Available at 4+, full power budget"
+    fighting_feats: "Combat-focused, often require martial proficiency"
+    skill_feats: "Expertise or expanded uses of skills"
+    spellcasting_feats: "Enhance or grant spellcasting"
+
+  common_structures:
+    half_feat: "+1 to ability score + related benefit"
+    full_feat: "Multiple related benefits, no ASI"
+    scaling_feat: "Benefits that improve with level or proficiency"
+
+  red_flags:
+    - "+2 to an ability AND significant other benefits"
+    - "Bonus action economy changes"
+    - "Extra attacks or actions"
+    - "Permanent advantage on common rolls"
+    - "Features that should be class abilities"
+    - "Must-have feats that every build takes"
+
+  design_tips:
+    - "Half-feats work well for niche specializations"
+    - "Feats should enable builds, not be mandatory"
+    - "Consider what happens with multiple characters taking the feat"
+    - "Roleplay benefits are valued by many players"
+
+# =============================================================================
+# BACKGROUND BALANCE GUIDELINES
+# =============================================================================
+backgrounds:
+  description: |
+    Backgrounds provide flavor, skills, and in 2024 rules, ability scores.
+    They should all be roughly equivalent in mechanical power.
+
+  2014_structure:
+    skill_proficiencies: 2
+    tool_or_language: "2 (any combination)"
+    equipment: "~15 gp value"
+    feature: "Roleplay/exploration benefit, no combat power"
+
+  2024_structure:
+    skill_proficiencies: 2
+    tool_proficiency: 1
+    origin_feat: 1
+    ability_scores: "+2/+1 or +1/+1/+1 (player chooses which abilities)"
+    equipment: "50 gp value"
+
+  feature_guidelines: |
+    Background features should:
+    - Provide social or exploration benefits
+    - Not grant combat advantages
+    - Be usable in most campaigns
+    - Encourage roleplay
+
+  red_flags:
+    - "Combat-relevant features"
+    - "Mechanical bonuses beyond skills/tools"
+    - "Features that require specific campaign settings"
+    - "Strictly-better skill combinations"
+
+# =============================================================================
+# GENERAL DESIGN PRINCIPLES
+# =============================================================================
+general_principles:
+  bounded_accuracy: |
+    D&D 5e uses bounded accuracy - bonuses typically range from +0 to +11.
+    - Avoid stacking multiple sources of the same bonus type
+    - Advantage/disadvantage replaces most situational modifiers
+    - AC above 20 is exceptional; above 25 is nearly unhittable
+
+  action_economy: |
+    Action economy is the most powerful resource in combat.
+    - Extra actions are extremely valuable
+    - Bonus action abilities should have limits
+    - Reaction abilities should be situational
+    - Free actions should be minor
+
+  resource_management: |
+    Limited-use abilities create interesting decisions.
+    - Short rest recovery = 2-3 uses between rests
+    - Long rest recovery = can be more powerful per use
+    - Per-encounter abilities often feel unlimited
+    - At-will abilities should be weaker than limited ones
+
+  party_dynamics: |
+    Consider how homebrew affects the table.
+    - One overpowered character reduces fun for others
+    - Unique abilities are better than "best at everything"
+    - Support abilities can be very powerful
+    - PvP implications matter in some groups
+
+  tier_play:
+    tier_1: "Levels 1-4: Local heroes, fragile, limited resources"
+    tier_2: "Levels 5-10: Regional heroes, most play happens here"
+    tier_3: "Levels 11-16: National heroes, powerful abilities"
+    tier_4: "Levels 17-20: World-shaping power, near-mythic"
+
+# =============================================================================
+# AI ASSISTANT BEHAVIOR
+# =============================================================================
+ai_guidance:
+  approach: |
+    When helping create homebrew content:
+    1. First understand the player's fantasy/concept
+    2. Suggest appropriate rarity/level for the desired effect
+    3. Compare to existing official content
+    4. Point out potential balance concerns
+    5. Offer alternatives if something seems too strong
+    6. Encourage playtesting and iteration
+
+  tone: |
+    - Be collaborative, not restrictive
+    - Explain reasoning behind balance suggestions
+    - Acknowledge that table variation exists
+    - Support creative ideas while noting concerns
+    - Offer to help refine rather than reject
+
+  when_asked_for_overpowered:
+    response: |
+      If a user explicitly wants something overpowered:
+      1. Acknowledge their request
+      2. Create what they asked for
+      3. Note the balance implications
+      4. Suggest a balanced alternative they could consider
+      5. Recommend discussing with their DM
+
+  comparison_examples: |
+    Always compare homebrew to similar official content:
+    - "This is similar to [X] but with [difference]"
+    - "At this power level, compare to [official example]"
+    - "Official spells at this level include..."

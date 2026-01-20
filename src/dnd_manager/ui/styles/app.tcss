@@ -1,0 +1,652 @@
+/* D&D Character Manager - Textual CSS */
+
+/* Global styles */
+Screen {
+    background: $surface;
+}
+
+/* Welcome Screen */
+#welcome-container {
+    align: center middle;
+    width: 100%;
+    height: 100%;
+}
+
+.title {
+    text-align: center;
+    text-style: bold;
+    color: $primary;
+    padding: 2;
+}
+
+.subtitle {
+    text-align: center;
+    color: $text-muted;
+    padding-bottom: 2;
+}
+
+.button-row {
+    align: center middle;
+    height: auto;
+    padding: 1;
+}
+
+.button-row Button {
+    margin: 0 1;
+}
+
+/* Dashboard Layout */
+#dashboard {
+    width: 100%;
+    height: 100%;
+    padding: 1;
+}
+
+.top-row {
+    height: 12;
+    width: 100%;
+}
+
+.bottom-row {
+    height: 1fr;
+    width: 100%;
+}
+
+/* Panel styles */
+.panel {
+    border: solid $primary;
+    padding: 1;
+    margin: 0 1 1 0;
+}
+
+.panel-title {
+    text-style: bold;
+    color: $primary;
+    padding-bottom: 1;
+}
+
+/* Ability Panel */
+.ability-panel {
+    width: 20;
+}
+
+.ability-row {
+    padding: 0;
+}
+
+/* Ability modifier colors */
+.ability-positive {
+    color: $success;
+}
+
+.ability-negative {
+    color: $error;
+}
+
+.ability-neutral {
+    color: $text-muted;
+}
+
+.ability-high {
+    color: $success;
+    text-style: bold;
+}
+
+.ability-low {
+    color: $error;
+    text-style: bold;
+}
+
+/* Progress indicator for wizards */
+.progress-indicator {
+    text-align: center;
+    color: $text-muted;
+    padding-bottom: 1;
+}
+
+.progress-step {
+    color: $text-muted;
+}
+
+.progress-step-active {
+    color: $primary;
+    text-style: bold;
+}
+
+.progress-step-complete {
+    color: $success;
+}
+
+/* Empty state styling */
+.empty-state {
+    color: $text-muted;
+    text-style: italic;
+    text-align: center;
+    padding: 2;
+}
+
+.empty-state-hint {
+    color: $primary;
+    text-align: center;
+}
+
+/* Character Info Panel */
+.char-info-panel {
+    width: 28;
+}
+
+.ruleset-info {
+    color: $text-muted;
+    text-style: italic;
+    padding-top: 1;
+}
+
+/* Combat Panel */
+.combat-panel {
+    width: 28;
+}
+
+/* Actions Panel */
+.actions-panel {
+    width: 1fr;
+}
+
+/* Skills Panel */
+.skills-panel {
+    width: 40;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.skill-row {
+    padding: 0;
+}
+
+/* Spells Column */
+.spells-column {
+    width: 1fr;
+    height: 100%;
+}
+
+/* Spells Panel */
+.spells-panel {
+    height: auto;
+    min-height: 8;
+}
+
+/* Prepared Spells Panel */
+.prepared-panel {
+    height: 1fr;
+    overflow-y: auto;
+}
+
+.no-spells {
+    color: $text-muted;
+    text-style: italic;
+}
+
+/* Character Selection Screen */
+#select-container {
+    align: center middle;
+    width: 100%;
+    height: 100%;
+    padding: 2;
+}
+
+#character-list {
+    width: 80%;
+    height: auto;
+    max-height: 80%;
+    border: solid $primary;
+    padding: 1;
+    overflow-y: auto;
+}
+
+.char-item {
+    padding: 0;
+    margin: 0 0 1 0;
+}
+
+.char-item.selected {
+    background: $primary-darken-2;
+}
+
+.char-name {
+    text-style: bold;
+}
+
+.char-details {
+    color: $text-muted;
+}
+
+/* Footer help */
+Footer {
+    background: $primary-darken-2;
+}
+
+/* Dice Roller Screen */
+#dice-container {
+    width: 100%;
+    height: 100%;
+    padding: 2;
+}
+
+.dice-input-row {
+    width: 100%;
+    height: auto;
+    padding: 1 0;
+}
+
+.dice-input-row Input {
+    width: 1fr;
+    margin-right: 1;
+}
+
+.quick-dice-row, .quick-roll-row {
+    width: 100%;
+    height: auto;
+    padding: 1 0;
+    align: center middle;
+}
+
+.quick-die, .quick-roll {
+    margin: 0 1;
+    min-width: 6;
+}
+
+#roll-history {
+    width: 100%;
+    height: 1fr;
+    border: solid $primary;
+    padding: 1;
+    margin-top: 1;
+}
+
+.roll-result {
+    padding: 0;
+}
+
+.crit-success {
+    color: $success;
+    text-style: bold;
+}
+
+.crit-fail {
+    color: $error;
+    text-style: bold;
+}
+
+.normal-roll {
+    color: $text;
+}
+
+/* AI Chat Screen */
+#chat-container {
+    width: 100%;
+    height: 100%;
+    padding: 2;
+}
+
+#chat-log {
+    width: 100%;
+    height: 1fr;
+    border: solid $primary;
+    padding: 1;
+    margin-bottom: 1;
+    background: $surface-darken-1;
+}
+
+.chat-input-row {
+    width: 100%;
+    height: auto;
+}
+
+.chat-input-row Input {
+    width: 1fr;
+    margin-right: 1;
+}
+
+.chat-input-row Button {
+    min-width: 10;
+}
+
+/* Notes Screen */
+#notes-container {
+    width: 100%;
+    height: 100%;
+    padding: 2;
+}
+
+.notes-row {
+    width: 100%;
+    height: 1fr;
+}
+
+.notes-panel {
+    width: 1fr;
+    height: 100%;
+    margin: 0 1;
+}
+
+#backstory-scroll, #notes-scroll {
+    height: 1fr;
+    padding: 1;
+}
+
+.notes-content {
+    color: $text;
+}
+
+.note-item {
+    padding: 0;
+    margin-bottom: 1;
+}
+
+/* Spells Screen */
+#spells-container {
+    width: 100%;
+    height: 100%;
+    padding: 1;
+}
+
+.slots-bar {
+    text-align: center;
+    color: $primary;
+    padding: 1;
+    background: $surface-darken-1;
+    margin-bottom: 1;
+}
+
+.spells-row {
+    width: 100%;
+    height: 1fr;
+}
+
+.spell-level-panel {
+    width: 30;
+    height: 100%;
+}
+
+.spell-level-panel.wide {
+    width: 1fr;
+}
+
+.spell-list {
+    height: 1fr;
+    padding: 0;
+}
+
+.spell-item {
+    padding: 0;
+}
+
+.spell-item.prepared {
+    color: $success;
+}
+
+.spell-item.cantrip {
+    color: $primary;
+}
+
+/* Inventory Screen */
+#inventory-container {
+    width: 100%;
+    height: 100%;
+    padding: 1;
+}
+
+.currency-bar {
+    text-align: center;
+    color: $warning;
+    padding: 1;
+    background: $surface-darken-1;
+    margin-bottom: 1;
+}
+
+.inventory-row {
+    width: 100%;
+    height: 1fr;
+}
+
+.inventory-panel {
+    width: 1fr;
+    height: 100%;
+}
+
+.item-list {
+    height: 1fr;
+    padding: 0;
+}
+
+.item-row {
+    padding: 0;
+}
+
+.item-row.selected {
+    background: $primary-darken-2;
+}
+
+.item-row.equipped {
+    color: $success;
+}
+
+.no-items {
+    color: $text-muted;
+    text-style: italic;
+}
+
+/* Features Screen */
+#features-container {
+    width: 100%;
+    height: 100%;
+    padding: 1;
+}
+
+.features-row {
+    width: 100%;
+    height: 1fr;
+}
+
+.feature-panel {
+    width: 1fr;
+    height: 100%;
+}
+
+.feature-list {
+    height: 1fr;
+    padding: 0;
+}
+
+.feature-header {
+    color: $primary;
+    text-style: bold;
+    padding-top: 1;
+}
+
+.feature-item {
+    padding: 0;
+}
+
+.feature-desc {
+    color: $text-muted;
+    text-style: italic;
+    padding-bottom: 1;
+}
+
+/* Character Editor Screens */
+#editor-container, #ability-editor-container, #hp-editor-container {
+    width: 100%;
+    height: 100%;
+    padding: 2;
+}
+
+.editor-row {
+    width: 100%;
+    height: 1fr;
+}
+
+.editor-panel {
+    width: 1fr;
+    height: 100%;
+}
+
+.ability-editor, .combat-editor, .info-editor {
+    padding: 1;
+}
+
+.hint {
+    color: $text-muted;
+    text-style: italic;
+}
+
+.ability-edit-row {
+    padding: 0 1;
+}
+
+.ability-edit-row.selected {
+    background: $primary-darken-2;
+    color: $primary;
+}
+
+.hp-display {
+    font-size: 14pt;
+    padding: 1;
+}
+
+.hp-input-row {
+    padding: 1;
+}
+
+.hp-input-row Input {
+    width: 20;
+}
+
+.hp-editor-panel {
+    width: 50;
+    margin: 0 auto;
+}
+
+/* Level Up Screen */
+#levelup-container {
+    width: 100%;
+    height: 100%;
+    padding: 2;
+    align: center middle;
+}
+
+.levelup-panel {
+    width: 60;
+    padding: 2;
+}
+
+.option {
+    color: $primary;
+}
+
+/* Spell Browser Screen */
+#browser-container {
+    width: 100%;
+    height: 100%;
+    padding: 1;
+}
+
+.search-row {
+    width: 100%;
+    height: auto;
+    padding: 1;
+}
+
+.search-row Input {
+    width: 100%;
+}
+
+.browser-row {
+    width: 100%;
+    height: 1fr;
+}
+
+.browser-panel {
+    width: 1fr;
+    height: 100%;
+}
+
+.spell-browser-list {
+    height: 1fr;
+}
+
+.spell-browser-item {
+    padding: 0 1;
+}
+
+.spell-browser-item.selected {
+    background: $primary-darken-2;
+    color: $primary;
+}
+
+.spell-details {
+    height: 1fr;
+    padding: 1;
+}
+
+.spell-name {
+    text-style: bold;
+    color: $primary;
+}
+
+.spell-school {
+    color: $text-muted;
+    text-style: italic;
+}
+
+.spell-tag {
+    color: $warning;
+}
+
+/* Help Screen */
+#help-container {
+    width: 100%;
+    height: 100%;
+    padding: 2;
+}
+
+#help-content {
+    width: 100%;
+    height: 1fr;
+    border: solid $primary;
+    padding: 2;
+}
+
+/* Character Creation Screen */
+#creation-container {
+    align: center middle;
+    width: 100%;
+    height: 100%;
+    padding: 2;
+}
+
+.creation-panel {
+    width: 70;
+    min-height: 20;
+    padding: 2;
+}
+
+.creation-panel Input {
+    width: 100%;
+    margin: 1 0;
+}
+
+.options-list {
+    height: auto;
+    max-height: 15;
+    padding: 1;
+}
+
+.option-item {
+    padding: 0 1;
+}
+
+.option-item.selected {
+    background: $primary-darken-2;
+    color: $primary;
+    text-style: bold;
+}

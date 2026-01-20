@@ -1,0 +1,212 @@
+# {{ character.name }}
+
+**{{ character.primary_class.name }}{% if character.primary_class.subclass %} ({{ character.primary_class.subclass }}){% endif %}** Level {{ character.total_level }}
+{% if character.species %}
+**{{ species_term }}:** {{ character.species }}{% if character.subspecies %} ({{ character.subspecies }}){% endif %}
+{% endif %}
+{% if character.background %}
+**Background:** {{ character.background }}
+{% endif %}
+**Alignment:** {{ character.alignment.display_name }}
+{% if character.player %}
+**Player:** {{ character.player }}
+{% endif %}
+**Ruleset:** {{ ruleset_name }}
+
+---
+
+## Ability Scores
+
+| Ability | Score | Modifier |
+|---------|-------|----------|
+{% for name, score in abilities.items() %}
+| {{ name }} | {{ score.total }} | {{ score.modifier_str }} |
+{% endfor %}
+
+**Proficiency Bonus:** +{{ character.proficiency_bonus }}
+
+---
+
+## Combat
+
+| Stat | Value |
+|------|-------|
+| Armor Class | {{ character.combat.total_ac }} |
+| Initiative | {{ character.get_initiative() | signed }} |
+| Speed | {{ character.combat.total_speed }} ft |
+| Hit Points | {{ character.combat.hit_points.current }}/{{ character.combat.hit_points.maximum }} |
+| Hit Dice | {{ character.combat.hit_dice.remaining }}/{{ character.combat.hit_dice.total }} {{ character.combat.hit_dice.die }} |
+
+---
+
+## Saving Throws
+
+| Ability | Modifier | Proficient |
+|---------|----------|------------|
+{% for ability in all_abilities %}
+| {{ ability.display_name }} | {{ character.get_save_modifier(ability) | signed }} | {{ "Yes" if ability in character.proficiencies.saving_throws else "No" }} |
+{% endfor %}
+
+---
+
+## Skills
+
+| Skill | Modifier | Proficiency |
+|-------|----------|-------------|
+{% for skill in all_skills %}
+{% set prof = character.proficiencies.get_skill_proficiency(skill) %}
+| {{ skill.display_name }} | {{ character.get_skill_modifier(skill) | signed }} | {{ prof.value if prof.value != "none" else "-" }} |
+{% endfor %}
+
+---
+
+## Proficiencies
+
+{% if character.proficiencies.weapons %}
+**Weapons:** {{ character.proficiencies.weapons | join(", ") }}
+{% endif %}
+
+{% if character.proficiencies.armor %}
+**Armor:** {{ character.proficiencies.armor | join(", ") }}
+{% endif %}
+
+{% if character.proficiencies.tools %}
+**Tools:** {{ character.proficiencies.tools | join(", ") }}
+{% endif %}
+
+**Languages:** {{ character.proficiencies.languages | join(", ") }}
+
+---
+{% if character.spellcasting.ability %}
+
+## Spellcasting
+
+**Spellcasting Ability:** {{ character.spellcasting.ability.display_name }}
+**Spell Save DC:** {{ character.get_spell_save_dc() }}
+**Spell Attack Bonus:** {{ character.get_spell_attack_bonus() | signed }}
+
+### Spell Slots
+
+| Level | Slots |
+|-------|-------|
+{% for level, slot in character.spellcasting.slots.items() | sort %}
+| {{ level }}{{ ordinal_suffix(level) }} | {{ slot.remaining }}/{{ slot.total }} |
+{% endfor %}
+
+{% if character.spellcasting.cantrips %}
+### Cantrips
+
+{% for cantrip in character.spellcasting.cantrips %}
+- {{ cantrip }}
+{% endfor %}
+{% endif %}
+
+{% if character.spellcasting.prepared %}
+### Prepared Spells
+
+{% for spell in character.spellcasting.prepared %}
+- {{ spell }}
+{% endfor %}
+{% endif %}
+
+{% if character.spellcasting.known %}
+### Known Spells
+
+{% for spell in character.spellcasting.known %}
+- {{ spell }}
+{% endfor %}
+{% endif %}
+
+---
+{% endif %}
+{% if character.features %}
+
+## Features & Traits
+
+{% for feature in character.features %}
+### {{ feature.name }}
+
+*Source: {{ feature.source }}*
+{% if feature.uses %}
+**Uses:** {{ feature.uses - feature.used }}/{{ feature.uses }}{% if feature.recharge %} ({{ feature.recharge }}){% endif %}
+{% endif %}
+
+{{ feature.description }}
+
+{% endfor %}
+
+---
+{% endif %}
+{% if character.equipment.items %}
+
+## Equipment
+
+**Currency:** {{ character.equipment.currency.gp }} gp, {{ character.equipment.currency.sp }} sp, {{ character.equipment.currency.cp }} cp
+
+| Item | Qty | Equipped | Attuned |
+|------|-----|----------|---------|
+{% for item in character.equipment.items %}
+| {{ item.name }} | {{ item.quantity }} | {{ "Yes" if item.equipped else "No" }} | {{ "Yes" if item.attuned else "-" }} |
+{% endfor %}
+
+---
+{% endif %}
+{% if character.personality.traits or character.personality.ideals or character.personality.bonds or character.personality.flaws %}
+
+## Personality
+
+{% if character.personality.traits %}
+**Personality Traits:**
+{% for trait in character.personality.traits %}
+- {{ trait }}
+{% endfor %}
+{% endif %}
+
+{% if character.personality.ideals %}
+**Ideals:**
+{% for ideal in character.personality.ideals %}
+- {{ ideal }}
+{% endfor %}
+{% endif %}
+
+{% if character.personality.bonds %}
+**Bonds:**
+{% for bond in character.personality.bonds %}
+- {{ bond }}
+{% endfor %}
+{% endif %}
+
+{% if character.personality.flaws %}
+**Flaws:**
+{% for flaw in character.personality.flaws %}
+- {{ flaw }}
+{% endfor %}
+{% endif %}
+
+---
+{% endif %}
+{% if character.backstory %}
+
+## Backstory
+
+{{ character.backstory }}
+
+---
+{% endif %}
+{% if character.notes %}
+
+## Notes
+
+{% for note in character.notes %}
+### {{ note.title }}
+
+*{{ note.modified.strftime("%Y-%m-%d") }}*
+
+{{ note.content }}
+
+{% endfor %}
+{% endif %}
+
+---
+
+*Generated by D&D Character Manager on {{ now.strftime("%Y-%m-%d %H:%M") }}*

@@ -1,0 +1,77 @@
+[project]
+name = "ccvault"
+version = "0.1.0"
+description = "CLIMR Character Vault - A CLI-based D&D 5e character manager supporting 2014 PHB, 2024 PHB, and Tales of the Valiant rulesets"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Jared Cluff"}
+]
+keywords = ["dnd", "dungeons-and-dragons", "character-manager", "tui", "cli", "climr", "ccvault"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment :: Role-Playing",
+]
+
+dependencies = [
+    "textual>=0.47.0",
+    "rich>=13.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "jinja2>=3.1",
+    "google-generativeai>=0.8",
+    "anthropic>=0.40",
+    "openai>=1.0",
+    "ollama>=0.4",
+    "weasyprint>=60.0",
+    "python-dateutil>=2.8",
+    "platformdirs>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.0",
+    "mypy>=1.8",
+    "ruff>=0.1",
+]
+embeddings = [
+    "sentence-transformers>=2.2.0",  # For semantic search (~80MB model)
+]
+all = [
+    "sentence-transformers>=2.2.0",
+]
+
+[project.scripts]
+ccvault = "dnd_manager.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dnd_manager"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ character.name }} - Character Sheet</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 0.5in;
+        }
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #333;
+            max-width: 7.5in;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 24pt;
+            color: #7b2d26;
+            margin-bottom: 5px;
+            border-bottom: 3px solid #7b2d26;
+            padding-bottom: 5px;
+        }
+        h2 {
+            font-size: 14pt;
+            color: #7b2d26;
+            margin-top: 15px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 3px;
+        }
+        h3 {
+            font-size: 11pt;
+            color: #333;
+            margin-top: 10px;
+            margin-bottom: 5px;
+        }
+        .header-info {
+            font-size: 11pt;
+            margin-bottom: 15px;
+        }
+        .header-info strong {
+            color: #7b2d26;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 10px 0;
+            font-size: 9pt;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 4px 8px;
+            text-align: left;
+        }
+        th {
+            background: #7b2d26;
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        .two-column {
+            display: flex;
+            gap: 20px;
+        }
+        .column {
+            flex: 1;
+        }
+        .ability-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .ability-box {
+            border: 2px solid #7b2d26;
+            padding: 8px;
+            text-align: center;
+            border-radius: 5px;
+        }
+        .ability-name {
+            font-weight: bold;
+            font-size: 8pt;
+            color: #7b2d26;
+        }
+        .ability-score {
+            font-size: 18pt;
+            font-weight: bold;
+        }
+        .ability-mod {
+            font-size: 10pt;
+            color: #666;
+        }
+        .combat-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .combat-box {
+            border: 2px solid #333;
+            padding: 10px;
+            text-align: center;
+            border-radius: 5px;
+        }
+        .combat-label {
+            font-size: 8pt;
+            color: #666;
+        }
+        .combat-value {
+            font-size: 16pt;
+            font-weight: bold;
+        }
+        .hp-bar {
+            background: #ddd;
+            border-radius: 3px;
+            height: 15px;
+            margin-top: 5px;
+        }
+        .hp-fill {
+            background: #7b2d26;
+            height: 100%;
+            border-radius: 3px;
+        }
+        ul {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+        li {
+            margin: 2px 0;
+        }
+        .proficient {
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 8pt;
+            color: #999;
+            border-top: 1px solid #ccc;
+            padding-top: 10px;
+        }
+        .spell-slots {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .slot-level {
+            border: 1px solid #7b2d26;
+            padding: 5px 10px;
+            border-radius: 3px;
+        }
+        .slot-dots {
+            font-size: 12pt;
+        }
+    </style>
+</head>
+<body>
+    <h1>{{ character.name }}</h1>
+    <div class="header-info">
+        <strong>{{ character.primary_class.name }}{% if character.primary_class.subclass %} ({{ character.primary_class.subclass }}){% endif %}</strong>
+        Level {{ character.total_level }}
+        {% if character.species %}
+        | <strong>{{ species_term }}:</strong> {{ character.species }}{% if character.subspecies %} ({{ character.subspecies }}){% endif %}
+        {% endif %}
+        {% if character.background %}
+        | <strong>Background:</strong> {{ character.background }}
+        {% endif %}
+        | <strong>Alignment:</strong> {{ character.alignment.display_name }}
+        | <strong>Ruleset:</strong> {{ ruleset_name }}
+    </div>
+
+    <h2>Ability Scores</h2>
+    <div class="ability-grid">
+        {% for name, score in abilities.items() %}
+        <div class="ability-box">
+            <div class="ability-name">{{ name[:3] | upper }}</div>
+            <div class="ability-score">{{ score.total }}</div>
+            <div class="ability-mod">{{ score.modifier_str }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    <p><strong>Proficiency Bonus:</strong> +{{ character.proficiency_bonus }}</p>
+
+    <h2>Combat</h2>
+    <div class="combat-stats">
+        <div class="combat-box">
+            <div class="combat-label">Armor Class</div>
+            <div class="combat-value">{{ character.combat.total_ac }}</div>
+        </div>
+        <div class="combat-box">
+            <div class="combat-label">Initiative</div>
+            <div class="combat-value">{{ character.get_initiative() | signed }}</div>
+        </div>
+        <div class="combat-box">
+            <div class="combat-label">Speed</div>
+            <div class="combat-value">{{ character.combat.total_speed }}ft</div>
+        </div>
+        <div class="combat-box">
+            <div class="combat-label">Hit Dice</div>
+            <div class="combat-value">{{ character.combat.hit_dice.remaining }}/{{ character.combat.hit_dice.total }} {{ character.combat.hit_dice.die }}</div>
+        </div>
+    </div>
+    <div class="combat-box" style="width: 200px; margin: 10px 0;">
+        <div class="combat-label">Hit Points</div>
+        <div class="combat-value">{{ character.combat.hit_points.current }}/{{ character.combat.hit_points.maximum }}</div>
+        <div class="hp-bar">
+            <div class="hp-fill" style="width: {{ (character.combat.hit_points.current / character.combat.hit_points.maximum * 100) | int }}%"></div>
+        </div>
+    </div>
+
+    <div class="two-column">
+        <div class="column">
+            <h2>Saving Throws</h2>
+            <table>
+                <tr><th>Ability</th><th>Mod</th><th>Prof</th></tr>
+                {% for ability in all_abilities %}
+                <tr>
+                    <td>{{ ability.display_name }}</td>
+                    <td>{{ character.get_save_modifier(ability) | signed }}</td>
+                    <td>{{ "Yes" if ability in character.proficiencies.saving_throws else "-" }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        <div class="column">
+            <h2>Skills</h2>
+            <table>
+                <tr><th>Skill</th><th>Mod</th><th>Prof</th></tr>
+                {% for skill in all_skills %}
+                {% set prof = character.proficiencies.get_skill_proficiency(skill) %}
+                <tr class="{{ 'proficient' if prof.value != 'none' else '' }}">
+                    <td>{{ skill.display_name }}</td>
+                    <td>{{ character.get_skill_modifier(skill) | signed }}</td>
+                    <td>{{ prof.value if prof.value != "none" else "-" }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+
+    <h2>Proficiencies</h2>
+    {% if character.proficiencies.weapons %}
+    <p><strong>Weapons:</strong> {{ character.proficiencies.weapons | join(", ") }}</p>
+    {% endif %}
+    {% if character.proficiencies.armor %}
+    <p><strong>Armor:</strong> {{ character.proficiencies.armor | join(", ") }}</p>
+    {% endif %}
+    {% if character.proficiencies.tools %}
+    <p><strong>Tools:</strong> {{ character.proficiencies.tools | join(", ") }}</p>
+    {% endif %}
+    <p><strong>Languages:</strong> {{ character.proficiencies.languages | join(", ") }}</p>
+
+    {% if character.spellcasting.ability %}
+    <h2>Spellcasting</h2>
+    <p>
+        <strong>Spellcasting Ability:</strong> {{ character.spellcasting.ability.display_name }} |
+        <strong>Spell Save DC:</strong> {{ character.get_spell_save_dc() }} |
+        <strong>Spell Attack:</strong> {{ character.get_spell_attack_bonus() | signed }}
+    </p>
+
+    <h3>Spell Slots</h3>
+    <div class="spell-slots">
+        {% for level, slot in character.spellcasting.slots.items() | sort %}
+        {% if slot.total > 0 %}
+        <div class="slot-level">
+            <strong>{{ level }}{{ ordinal_suffix(level) }}:</strong>
+            <span class="slot-dots">{{ "●" * slot.remaining }}{{ "○" * slot.used }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    {% if character.spellcasting.cantrips %}
+    <h3>Cantrips</h3>
+    <ul>
+        {% for cantrip in character.spellcasting.cantrips %}
+        <li>{{ cantrip }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if character.spellcasting.prepared %}
+    <h3>Prepared Spells</h3>
+    <ul>
+        {% for spell in character.spellcasting.prepared %}
+        <li>{{ spell }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% endif %}
+
+    {% if character.features %}
+    <h2>Features & Traits</h2>
+    {% for feature in character.features %}
+    <h3>{{ feature.name }}</h3>
+    <p><em>Source: {{ feature.source }}</em>
+    {% if feature.uses %}
+    | <strong>Uses:</strong> {{ feature.uses - feature.used }}/{{ feature.uses }}{% if feature.recharge %} ({{ feature.recharge }}){% endif %}
+    {% endif %}
+    </p>
+    <p>{{ feature.description }}</p>
+    {% endfor %}
+    {% endif %}
+
+    {% if character.equipment.items %}
+    <h2>Equipment</h2>
+    <p><strong>Currency:</strong> {{ character.equipment.currency.gp }}gp, {{ character.equipment.currency.sp }}sp, {{ character.equipment.currency.cp }}cp</p>
+    <table>
+        <tr><th>Item</th><th>Qty</th><th>Equipped</th></tr>
+        {% for item in character.equipment.items %}
+        <tr>
+            <td>{{ item.name }}</td>
+            <td>{{ item.quantity }}</td>
+            <td>{{ "Yes" if item.equipped else "-" }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if character.backstory %}
+    <h2>Backstory</h2>
+    <p>{{ character.backstory }}</p>
+    {% endif %}
+
+    <div class="footer">
+        Generated by D&D Character Manager on {{ now.strftime("%Y-%m-%d %H:%M") }}
+    </div>
+</body>
+</html>
