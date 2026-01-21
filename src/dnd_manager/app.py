@@ -413,7 +413,11 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         Args:
             rebuild: If True, remount all widgets. If False, just update selection visuals.
         """
-        options_list = self.query_one("#options-list", VerticalScroll)
+        try:
+            options_list = self.query_one("#options-list", VerticalScroll)
+        except Exception:
+            # Screen not mounted yet
+            return
 
         if rebuild:
             options_list.remove_children()
