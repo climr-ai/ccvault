@@ -140,7 +140,7 @@ class ListNavigationMixin:
         return False
 
 
-class CharacterCreationScreen(Screen):
+class CharacterCreationScreen(ListNavigationMixin, Screen):
     """Wizard for creating a new character."""
 
     BINDINGS = [
@@ -152,6 +152,9 @@ class CharacterCreationScreen(Screen):
 
     def __init__(self, draft_data: Optional[dict] = None, **kwargs) -> None:
         super().__init__(**kwargs)
+        # Letter jump tracking
+        self._last_letter: str = ""
+        self._last_letter_index: int = -1
         # Dynamic steps - subspecies and origin_feat may be skipped
         self.all_steps = ["name", "class", "species", "subspecies", "background", "origin_feat", "abilities", "confirm"]
 
@@ -374,6 +377,35 @@ class CharacterCreationScreen(Screen):
                 classes=f"option-item {'selected' if i == self.selected_option else ''}",
             ))
 
+        self._scroll_to_selection()
+
+    # ListNavigationMixin implementation
+    @property
+    def selected_index(self) -> int:
+        return self.selected_option
+
+    @selected_index.setter
+    def selected_index(self, value: int) -> None:
+        self.selected_option = value
+
+    def _get_list_items(self) -> list:
+        return self.current_options
+
+    def _get_item_name(self, item) -> str:
+        return str(item)
+
+    def _get_scroll_container(self):
+        try:
+            return self.query_one("#options-list", VerticalScroll)
+        except Exception:
+            return None
+
+    def _get_item_widget_class(self) -> str:
+        return "option-item"
+
+    def _update_selection(self) -> None:
+        self._refresh_options()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "btn-cancel":
@@ -502,6 +534,14 @@ class CharacterCreationScreen(Screen):
     def key_down(self) -> None:
         """Move selection down."""
         self.action_next_option()
+
+    def on_key(self, event) -> None:
+        """Handle key presses for letter navigation."""
+        step_name = self.steps[self.step] if self.step < len(self.steps) else ""
+        # Only do letter jump on steps that show options list
+        if step_name in ("class", "species", "subspecies", "background", "origin_feat"):
+            if self._handle_key_for_letter_jump(event.key):
+                event.prevent_default()
 
     def action_cancel(self) -> None:
         """Cancel character creation - draft is auto-saved for resume."""
