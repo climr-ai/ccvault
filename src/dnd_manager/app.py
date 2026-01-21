@@ -7788,11 +7788,10 @@ class DNDManagerApp(App):
         char = self.store.load_path(path)
         if char:
             self.current_character = char
-            # Remove all screens and push dashboard
+            # Remove all screens except the base, then switch to dashboard
             while len(self.screen_stack) > 1:
                 self.pop_screen()
-            self.pop_screen()
-            self.push_screen(MainDashboard(char))
+            self.switch_screen(MainDashboard(char))
         else:
             self.notify("Failed to load character", severity="error")
 
