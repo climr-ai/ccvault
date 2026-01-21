@@ -17,12 +17,29 @@ Screen {
     text-style: bold;
     color: $primary;
     padding: 2;
+    padding-bottom: 0;
+}
+
+.version-label {
+    text-align: center;
+    color: $text-muted;
+    padding: 0;
+    padding-bottom: 1;
 }
 
 .subtitle {
     text-align: center;
     color: $text-muted;
     padding-bottom: 2;
+}
+
+.draft-notice {
+    text-align: center;
+    color: $success;
+    text-style: bold;
+    padding: 1;
+    background: $success 10%;
+    margin: 1 4;
 }
 
 .button-row {

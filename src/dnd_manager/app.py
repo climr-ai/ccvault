@@ -33,22 +33,51 @@ class CharacterCreationScreen(Screen):
         Binding("right", "next_option", "Next"),
     ]
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, draft_data: Optional[dict] = None, **kwargs) -> None:
         super().__init__(**kwargs)
-        self.step = 0
         # Dynamic steps - subspecies and origin_feat may be skipped
         self.all_steps = ["name", "class", "species", "subspecies", "background", "origin_feat", "abilities", "confirm"]
-        self.char_data = {
-            "name": "New Hero",
-            "class": "Fighter",
-            "species": "Human",
-            "subspecies": None,
-            "background": "Soldier",
-            "origin_feat": None,
-            "ruleset": "dnd2024",
-        }
+
+        # Load from draft or use defaults
+        if draft_data:
+            self.step = draft_data.get("_step", 0)
+            self.char_data = {
+                "name": draft_data.get("name", "New Hero"),
+                "class": draft_data.get("class", "Fighter"),
+                "species": draft_data.get("species", "Human"),
+                "subspecies": draft_data.get("subspecies"),
+                "background": draft_data.get("background", "Soldier"),
+                "origin_feat": draft_data.get("origin_feat"),
+                "ruleset": draft_data.get("ruleset", "dnd2024"),
+            }
+        else:
+            self.step = 0
+            self.char_data = {
+                "name": "New Hero",
+                "class": "Fighter",
+                "species": "Human",
+                "subspecies": None,
+                "background": "Soldier",
+                "origin_feat": None,
+                "ruleset": "dnd2024",
+            }
+
         self.current_options: list[str] = []
         self.selected_option = 0
+        self._draft_store = None
+
+    @property
+    def draft_store(self):
+        """Lazy-load draft store."""
+        if self._draft_store is None:
+            from dnd_manager.storage.yaml_store import get_default_draft_store
+            self._draft_store = get_default_draft_store()
+        return self._draft_store
+
+    def _save_draft(self) -> None:
+        """Auto-save current progress as draft."""
+        draft_data = {**self.char_data, "_step": self.step}
+        self.draft_store.save_draft(draft_data)
 
     @property
     def steps(self) -> list[str]:
@@ -243,6 +272,7 @@ class CharacterCreationScreen(Screen):
             self.step -= 1
             self.selected_option = 0
             self._show_step()
+            self._save_draft()
 
     def action_next(self) -> None:
         """Go to next step or create character."""
@@ -278,6 +308,7 @@ class CharacterCreationScreen(Screen):
             self.step += 1
             self.selected_option = 0
             self._show_step()
+            self._save_draft()
 
     def _create_character(self) -> None:
         """Create the character and go to dashboard."""
@@ -324,9 +355,10 @@ class CharacterCreationScreen(Screen):
                             ))
                         break
 
-        # Save
+        # Save character and clear draft
         self.app.store.save(char)
         self.app.current_character = char
+        self.draft_store.clear_draft()
 
         self.notify(f"Created {char.name}!")
 
@@ -355,8 +387,15 @@ class CharacterCreationScreen(Screen):
         self.action_next_option()
 
     def action_cancel(self) -> None:
-        """Cancel character creation."""
+        """Cancel character creation - draft is auto-saved for resume."""
+        self._save_draft()  # Ensure latest state is saved
+        self.notify("Progress saved - you can resume anytime")
         self.app.pop_screen()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter key in input fields - proceed to next step."""
+        if event.input.id == "name-input":
+            self.action_next()
 
 
 class WelcomeScreen(Screen):
@@ -365,6 +404,7 @@ class WelcomeScreen(Screen):
     BINDINGS = [
         Binding("n", "new_character", "New Character"),
         Binding("o", "open_character", "Open Character"),
+        Binding("r", "resume_draft", "Resume Draft", show=False),
         Binding("q", "quit", "Quit"),
         Binding("left", "prev_button", "Previous", show=False),
         Binding("right", "next_button", "Next", show=False),
@@ -375,14 +415,35 @@ class WelcomeScreen(Screen):
         super().__init__(**kwargs)
         self.selected_index = 0
         self.button_ids = ["btn-new", "btn-open", "btn-quit"]
+        self._draft_store = None
+        self._has_draft = False
+
+    @property
+    def draft_store(self):
+        """Lazy-load draft store."""
+        if self._draft_store is None:
+            from dnd_manager.storage.yaml_store import get_default_draft_store
+            self._draft_store = get_default_draft_store()
+        return self._draft_store
+
+    def _get_version(self) -> str:
+        """Get the application version."""
+        try:
+            from importlib.metadata import version
+            return version("dnd-manager")
+        except Exception:
+            return "dev"
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Container(
-            Static("D&D Character Manager", id="title", classes="title"),
-            Static("Manage your D&D 5e characters with style", classes="subtitle"),
+            Static("CCVault", id="title", classes="title"),
+            Static(f"v{self._get_version()}", id="version", classes="version-label"),
+            Static("CLI Character Vault for D&D 5e", classes="subtitle"),
+            Static(id="draft-notice", classes="draft-notice"),
             Horizontal(
                 Button("New Character", id="btn-new", variant="primary"),
+                Button("Resume Draft", id="btn-resume", variant="success"),
                 Button("Open Character", id="btn-open", variant="default"),
                 Button("Quit", id="btn-quit", variant="error"),
                 classes="button-row",
@@ -392,15 +453,39 @@ class WelcomeScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
-        """Focus the first button on mount."""
+        """Check for drafts and update UI."""
+        self._check_for_draft()
         self._update_button_focus()
+
+    def _check_for_draft(self) -> None:
+        """Check if there's a draft to resume."""
+        draft_info = self.draft_store.get_draft_info()
+        resume_btn = self.query_one("#btn-resume", Button)
+        notice = self.query_one("#draft-notice", Static)
+
+        if draft_info:
+            self._has_draft = True
+            self.button_ids = ["btn-new", "btn-resume", "btn-open", "btn-quit"]
+            resume_btn.display = True
+            # Show draft info
+            notice.update(f"Draft: {draft_info['name']} ({draft_info['class']} {draft_info['species']}) - Press [R] to resume")
+            notice.display = True
+        else:
+            self._has_draft = False
+            self.button_ids = ["btn-new", "btn-open", "btn-quit"]
+            resume_btn.display = False
+            notice.display = False
 
     def _update_button_focus(self) -> None:
         """Update which button appears focused."""
         for i, btn_id in enumerate(self.button_ids):
-            btn = self.query_one(f"#{btn_id}", Button)
-            if i == self.selected_index:
-                btn.focus()
+            try:
+                btn = self.query_one(f"#{btn_id}", Button)
+                if btn.display:  # Only focus visible buttons
+                    if i == self.selected_index:
+                        btn.focus()
+            except Exception:
+                pass
 
     def action_prev_button(self) -> None:
         """Move to previous button."""
@@ -417,14 +502,28 @@ class WelcomeScreen(Screen):
         btn_id = self.button_ids[self.selected_index]
         if btn_id == "btn-new":
             self.action_new_character()
+        elif btn_id == "btn-resume":
+            self.action_resume_draft()
         elif btn_id == "btn-open":
             self.action_open_character()
         elif btn_id == "btn-quit":
             self.action_quit()
 
     def action_new_character(self) -> None:
-        """Create a new character."""
+        """Create a new character (clears any existing draft)."""
+        if self._has_draft:
+            self.draft_store.clear_draft()
         self.app.action_new_character()
+
+    def action_resume_draft(self) -> None:
+        """Resume character creation from draft."""
+        draft_data = self.draft_store.load_draft()
+        if draft_data:
+            self.app.push_screen(CharacterCreationScreen(draft_data=draft_data))
+            self.notify(f"Resuming: {draft_data.get('name', 'Unknown')}")
+        else:
+            self.notify("No draft found", severity="warning")
+            self._check_for_draft()
 
     def action_open_character(self) -> None:
         """Open an existing character."""
@@ -438,6 +537,8 @@ class WelcomeScreen(Screen):
         """Handle button presses."""
         if event.button.id == "btn-new":
             self.action_new_character()
+        elif event.button.id == "btn-resume":
+            self.action_resume_draft()
         elif event.button.id == "btn-open":
             self.action_open_character()
         elif event.button.id == "btn-quit":
@@ -3644,6 +3745,15 @@ class HPEditorScreen(Screen):
         """Focus the input."""
         self.query_one("#hp-amount", Input).focus()
 
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter key - default to heal (most common action)."""
+        if event.input.id == "hp-amount":
+            amount = self._get_amount()
+            if amount > 0:
+                self.action_heal()
+            else:
+                self.notify("Enter an amount, then press Enter to heal or use H/D/T/M keys")
+
     def _get_amount(self) -> int:
         """Get the amount from the input."""
         try:
@@ -5109,6 +5219,11 @@ class NoteEditorScreen(Screen):
         """Focus title input on mount."""
         self.query_one("#note-title-input", Input).focus()
 
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter key - save the note."""
+        # Enter in any field saves the note (Ctrl+S also works)
+        self.action_save()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "btn-save":
@@ -5872,10 +5987,20 @@ class SettingsScreen(Screen):
         self.app.pop_screen()
 
 
-class DNDManagerApp(App):
-    """CLIMR Character Vault application."""
+def _get_app_version() -> str:
+    """Get the application version."""
+    try:
+        from importlib.metadata import version
+        return version("dnd-manager")
+    except Exception:
+        return "0.1.0"
 
-    TITLE = "CLIMR Character Vault"
+
+class DNDManagerApp(App):
+    """CCVault - CLI Character Vault application."""
+
+    TITLE = f"CCVault v{_get_app_version()}"
+    SUB_TITLE = "CLI Character Vault for D&D 5e"
     CSS_PATH = "ui/styles/app.tcss"
 
     BINDINGS = [

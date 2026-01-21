@@ -476,3 +476,70 @@ def get_default_character_store() -> CharacterStore:
 def get_project_character_store(project_dir: Path) -> CharacterStore:
     """Get a character store for a specific project directory."""
     return CharacterStore(project_dir / "characters")
+
+
+class DraftStore:
+    """Simple store for character creation drafts."""
+
+    def __init__(self, directory: Optional[Path] = None):
+        if directory is None:
+            app_dir = Path(user_data_dir("dnd-manager", "dnd"))
+            directory = app_dir / ".drafts"
+
+        self.directory = directory
+        self.directory.mkdir(parents=True, exist_ok=True)
+        self._draft_file = self.directory / "character_creation.yaml"
+
+    def save_draft(self, draft_data: dict) -> None:
+        """Save character creation draft."""
+        draft_data["_draft_timestamp"] = datetime.now().isoformat()
+        try:
+            with open(self._draft_file, "w", encoding="utf-8") as f:
+                yaml.dump(draft_data, f, default_flow_style=False, allow_unicode=True)
+            logger.debug(f"Saved draft: {self._draft_file}")
+        except Exception as e:
+            logger.warning(f"Failed to save draft: {e}")
+
+    def load_draft(self) -> Optional[dict]:
+        """Load character creation draft if exists."""
+        if not self._draft_file.exists():
+            return None
+        try:
+            with open(self._draft_file, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            logger.debug(f"Loaded draft: {self._draft_file}")
+            return data
+        except Exception as e:
+            logger.warning(f"Failed to load draft: {e}")
+            return None
+
+    def clear_draft(self) -> None:
+        """Delete the draft file."""
+        if self._draft_file.exists():
+            try:
+                self._draft_file.unlink()
+                logger.debug("Cleared draft")
+            except Exception as e:
+                logger.warning(f"Failed to clear draft: {e}")
+
+    def has_draft(self) -> bool:
+        """Check if a draft exists."""
+        return self._draft_file.exists()
+
+    def get_draft_info(self) -> Optional[dict]:
+        """Get summary info about the draft without loading full data."""
+        draft = self.load_draft()
+        if not draft:
+            return None
+        return {
+            "name": draft.get("name", "Unknown"),
+            "class": draft.get("class", "Unknown"),
+            "species": draft.get("species", "Unknown"),
+            "step": draft.get("_step", 0),
+            "timestamp": draft.get("_draft_timestamp"),
+        }
+
+
+def get_default_draft_store() -> DraftStore:
+    """Get the default draft store."""
+    return DraftStore()

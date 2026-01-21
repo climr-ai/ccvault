@@ -175,3 +175,74 @@ class TestProvidersImport:
         """Test Ollama provider imports."""
         from dnd_manager.ai.ollama_provider import OllamaProvider
         assert OllamaProvider is not None
+
+
+class TestDraftSystem:
+    """Test the character creation draft system."""
+
+    def test_draft_store_imports(self):
+        """Test draft store can be imported."""
+        from dnd_manager.storage.yaml_store import DraftStore, get_default_draft_store
+        assert DraftStore is not None
+        assert get_default_draft_store is not None
+
+    def test_draft_store_operations(self, tmp_path):
+        """Test draft store save/load/clear operations."""
+        from dnd_manager.storage.yaml_store import DraftStore
+
+        store = DraftStore(tmp_path)
+
+        # Initially no draft
+        assert not store.has_draft()
+        assert store.load_draft() is None
+
+        # Save a draft
+        draft_data = {
+            "name": "Test Hero",
+            "class": "Wizard",
+            "species": "Elf",
+            "_step": 2,
+        }
+        store.save_draft(draft_data)
+
+        # Draft should exist now
+        assert store.has_draft()
+
+        # Load should return data
+        loaded = store.load_draft()
+        assert loaded is not None
+        assert loaded["name"] == "Test Hero"
+        assert loaded["class"] == "Wizard"
+        assert loaded["_step"] == 2
+        assert "_draft_timestamp" in loaded
+
+        # Get info should work
+        info = store.get_draft_info()
+        assert info["name"] == "Test Hero"
+        assert info["class"] == "Wizard"
+
+        # Clear should remove draft
+        store.clear_draft()
+        assert not store.has_draft()
+        assert store.load_draft() is None
+
+    def test_character_creation_screen_accepts_draft(self):
+        """Test CharacterCreationScreen can be initialized with draft data."""
+        from dnd_manager.app import CharacterCreationScreen
+
+        # Without draft
+        screen1 = CharacterCreationScreen()
+        assert screen1.step == 0
+        assert screen1.char_data["name"] == "New Hero"
+
+        # With draft
+        draft = {
+            "name": "Resumed Hero",
+            "class": "Rogue",
+            "species": "Halfling",
+            "_step": 3,
+        }
+        screen2 = CharacterCreationScreen(draft_data=draft)
+        assert screen2.step == 3
+        assert screen2.char_data["name"] == "Resumed Hero"
+        assert screen2.char_data["class"] == "Rogue"
