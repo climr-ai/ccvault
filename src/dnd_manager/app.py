@@ -756,7 +756,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 with open(log_file, "a") as f:
                     f.write(f"{datetime.datetime.now()} nav {old_index}→{new_index}: saved={saved_scroll:.1f} before_restore={before_restore:.1f} after_restore={after_restore:.1f} final={final:.1f}\n")
 
-            self.set_timer(0.02, restore_scroll)
+            self.set_timer(0.05, restore_scroll)
             self._refresh_details()
         except Exception as e:
             with open(log_file, "a") as f:
