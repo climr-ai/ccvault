@@ -1994,13 +1994,13 @@ class QuickActions(Static):
 
     def compose(self) -> ComposeResult:
         yield Static("QUICK ACTIONS", classes="panel-title")
-        yield Static("[S]pells  [I]nventory")
-        yield Static("[F]eats   [N]otes")
-        yield Static("[A]I Chat [R]oll")
-        yield Static("[H]omebrew Guidelines")
+        yield Static("\\[S]pells  \\[I]nventory")
+        yield Static("\\[F]eats   \\[N]otes")
+        yield Static("\\[A]I Chat \\[R]oll")
+        yield Static("\\[H]omebrew Guidelines")
         yield Static("")
-        yield Static("[E]dit Character")
-        yield Static("[L]evel Up")
+        yield Static("\\[E]dit Character")
+        yield Static("\\[L]evel Up")
 
 
 class SkillList(Static):
@@ -2234,7 +2234,7 @@ class AIChatScreen(Screen):
         yield Header()
         yield Container(
             Static(f"AI {mode_name} - {char_name}", id="chat-title", classes="title"),
-            Static("[M] Switch Mode  [Ctrl+L] Clear  [Esc] Back", classes="subtitle"),
+            Static("\\[M] Switch Mode  \\[Ctrl+L] Clear  \\[Esc] Back", classes="subtitle"),
             Horizontal(
                 *[Button(name, id=f"mode-{mode}", variant="primary" if mode == self.current_mode else "default", classes="mode-btn")
                   for mode, name in self.MODES],
@@ -2509,7 +2509,7 @@ class HomebrewScreen(Screen):
         yield Header()
         yield Container(
             Static("Homebrew Balance Guidelines", classes="title"),
-            Static("[1-5] Switch Type  [A] AI Chat  [L] Library  [Esc] Back", classes="subtitle"),
+            Static("\\[1-5] Switch Type  \\[A] AI Chat  \\[L] Library  \\[Esc] Back", classes="subtitle"),
             Horizontal(
                 Vertical(
                     Static("CONTENT TYPES", classes="panel-title"),
@@ -4481,7 +4481,7 @@ class CharacterEditorScreen(Screen):
         yield Header()
         yield Container(
             Static(f"Edit Character - {self.character.name}", classes="title"),
-            Static("[1] Abilities  [2] HP  [3] Info  [4] Custom Stats  [S] Save  [Esc] Back", classes="subtitle"),
+            Static("\\[1] Abilities  \\[2] HP  \\[3] Info  \\[4] Custom Stats  \\[S] Save  \\[Esc] Back", classes="subtitle"),
             Horizontal(
                 Vertical(
                     Static("ABILITY SCORES", classes="panel-title"),
@@ -5077,7 +5077,7 @@ class HPEditorScreen(Screen):
         yield Header()
         yield Container(
             Static("Edit Hit Points", classes="title"),
-            Static("[H] Heal  [D] Damage  [T] Temp HP  [M] Set Max  [S] Save", classes="subtitle"),
+            Static("\\[H] Heal  \\[D] Damage  \\[T] Temp HP  \\[M] Set Max  \\[S] Save", classes="subtitle"),
             Vertical(
                 Static(f"Current HP: {hp.current}", id="current-hp", classes="hp-display"),
                 Static(f"Maximum HP: {hp.maximum}", id="max-hp", classes="hp-display"),
@@ -5196,7 +5196,7 @@ class InfoEditorScreen(Screen):
         yield Header()
         yield Container(
             Static("Edit Character Info", classes="title"),
-            Static("[S] Save  [Esc] Cancel", classes="subtitle"),
+            Static("\\[S] Save  \\[Esc] Cancel", classes="subtitle"),
             Vertical(
                 Static("Name:", classes="panel-title"),
                 Input(value=self.character.name, id="name-input"),
@@ -5278,7 +5278,7 @@ class CurrencyEditorScreen(Screen):
         yield Header()
         yield Container(
             Static("Manage Currency", classes="title"),
-            Static("[S] Save  [Esc] Cancel", classes="subtitle"),
+            Static("\\[S] Save  \\[Esc] Cancel", classes="subtitle"),
             Vertical(
                 Horizontal(
                     Static("Platinum (pp):", classes="currency-label"),
@@ -5394,10 +5394,10 @@ class InventoryScreen(ListNavigationMixin, Screen):
                 ),
                 Vertical(
                     Static("ACTIONS", classes="panel-title"),
-                    Static("[A] Add item"),
-                    Static("[D] Drop selected"),
-                    Static("[E] Equip/Unequip"),
-                    Static("[G] Manage gold"),
+                    Static("\\[A] Add item"),
+                    Static("\\[D] Drop selected"),
+                    Static("\\[E] Equip/Unequip"),
+                    Static("\\[G] Manage gold"),
                     Static(""),
                     Static("ENCUMBRANCE", classes="panel-title"),
                     Static(id="encumbrance-info"),
@@ -6295,10 +6295,10 @@ class SpellsScreen(Screen):
                 ),
                 Vertical(
                     Static("ACTIONS", classes="panel-title"),
-                    Static("[C] Cast selected spell"),
-                    Static("[P] Toggle prepared"),
-                    Static("[R] Short/Long rest"),
-                    Static("[/] Search spells"),
+                    Static("\\[C] Cast selected spell"),
+                    Static("\\[P] Toggle prepared"),
+                    Static("\\[R] Short/Long rest"),
+                    Static("\\[/] Search spells"),
                     Static(""),
                     Static("SPELL SLOTS", classes="panel-title"),
                     Static(id="slots-detail"),
@@ -6500,7 +6500,7 @@ class NotesScreen(Screen):
         yield Header()
         yield Container(
             Static(f"Notes - {self.character.name}", classes="title"),
-            Static("[E] Edit Notes  [B] Edit Backstory  [S] Session Notes  [Esc] Back", classes="subtitle"),
+            Static("\\[E] Edit Notes  \\[B] Edit Backstory  \\[S] Session Notes  \\[Esc] Back", classes="subtitle"),
             Horizontal(
                 Vertical(
                     Static("BACKSTORY", classes="panel-title"),
@@ -6662,7 +6662,7 @@ class SessionNotesScreen(ListNavigationMixin, Screen):
         yield Header()
         yield Container(
             Static("Session Notes", classes="title"),
-            Static("[N] New  [E] Edit  [D] Delete  [/] Search  [S] Toggle Semantic", classes="subtitle"),
+            Static("\\[N] New  \\[E] Edit  \\[D] Delete  \\[/] Search  \\[S] Toggle Semantic", classes="subtitle"),
             Horizontal(
                 Input(placeholder="Search notes...", id="notes-search"),
                 Static(id="search-mode", classes="search-mode"),
@@ -6904,7 +6904,7 @@ class NoteEditorScreen(Screen):
         yield Header()
         yield Container(
             Static(title, classes="title"),
-            Static("[Ctrl+S] Save  [Esc] Cancel", classes="subtitle"),
+            Static("\\[Ctrl+S] Save  \\[Esc] Cancel", classes="subtitle"),
             Vertical(
                 Static("Title:", classes="field-label"),
                 Input(
