@@ -726,9 +726,21 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
         This avoids rebuilding the entire list, preventing scroll/layout issues.
         """
+        import datetime
+        log_file = "/tmp/dnd_scroll_debug.log"
+
         try:
             options_list = self.query_one("#options-list", VerticalScroll)
             widgets = list(options_list.query(".option-item"))
+
+            with open(log_file, "a") as f:
+                f.write(f"\n{datetime.datetime.now()} _update_selection_visual\n")
+                f.write(f"  old_index={old_index} new_index={new_index}\n")
+                f.write(f"  widgets count={len(widgets)}\n")
+                f.write(f"  options_list.scroll_y={options_list.scroll_y}\n")
+                f.write(f"  options_list.max_scroll_y={options_list.max_scroll_y}\n")
+                f.write(f"  options_list.size={options_list.size}\n")
+                f.write(f"  options_list.virtual_size={options_list.virtual_size}\n")
 
             # Update old widget (remove selection)
             if 0 <= old_index < len(widgets):
@@ -741,15 +753,19 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 new_widget = widgets[new_index]
                 new_widget.update(f"▶ {self.current_options[new_index]}")
                 new_widget.add_class("selected")
-                # Scroll into view if needed
+
                 before_y = options_list.scroll_y
                 new_widget.scroll_visible(animate=False)
                 after_y = options_list.scroll_y
-                self.notify(f"nav {new_index}: scroll {before_y:.0f}→{after_y:.0f} max={options_list.max_scroll_y:.0f}")
+
+                with open(log_file, "a") as f:
+                    f.write(f"  new_widget.region={new_widget.region}\n")
+                    f.write(f"  scroll_visible called: before={before_y} after={after_y}\n")
 
             self._refresh_details()
         except Exception as e:
-            self.notify(f"Error: {e}")
+            with open(log_file, "a") as f:
+                f.write(f"  EXCEPTION: {e}\n")
 
     def _update_selection(self) -> None:
         self._refresh_options()
