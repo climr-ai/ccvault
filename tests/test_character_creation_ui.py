@@ -143,8 +143,7 @@ class TestCharacterCreationNavigation:
         screen.selected_option = 0
 
         # Should not raise an exception
-        screen._refresh_options(rebuild=True)
-        screen._refresh_options(rebuild=False)
+        screen._refresh_options()
 
 
 class TestRefreshOptions:
@@ -155,17 +154,17 @@ class TestRefreshOptions:
         """Create a CharacterCreationScreen for testing."""
         return CharacterCreationScreen()
 
-    def test_refresh_options_has_rebuild_param(self, screen):
-        """Test that _refresh_options accepts rebuild parameter."""
-        import inspect
-        sig = inspect.signature(screen._refresh_options)
-        assert 'rebuild' in sig.parameters
+    def test_refresh_options_exists(self, screen):
+        """Test that _refresh_options method exists."""
+        assert hasattr(screen, '_refresh_options')
+        assert callable(screen._refresh_options)
 
-    def test_rebuild_default_is_true(self, screen):
-        """Test that rebuild defaults to True."""
-        import inspect
-        sig = inspect.signature(screen._refresh_options)
-        assert sig.parameters['rebuild'].default is True
+    def test_refresh_options_handles_empty_options(self, screen):
+        """Test that _refresh_options handles empty options list."""
+        screen.current_options = []
+        screen.selected_option = 0
+        # Should not crash
+        screen._refresh_options()
 
 
 class TestClickableListItem:
