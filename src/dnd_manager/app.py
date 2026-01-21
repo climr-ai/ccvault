@@ -730,8 +730,6 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             options_list = self.query_one("#options-list", VerticalScroll)
             widgets = list(options_list.query(".option-item"))
 
-            before = options_list.scroll_y
-
             # Update old widget (remove selection)
             if 0 <= old_index < len(widgets):
                 old_widget = widgets[old_index]
@@ -744,12 +742,18 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 new_widget.update(f"▶ {self.current_options[new_index]}")
                 new_widget.add_class("selected")
 
-            after = options_list.scroll_y
+            # Calculate centered scroll position and apply after Textual's auto-scroll
+            viewport_height = options_list.size.height
+            target_scroll = max(0, new_index - viewport_height // 2)
+            target_scroll = min(target_scroll, options_list.max_scroll_y)
 
-            with open(log_file, "a") as f:
-                f.write(f"{datetime.datetime.now()} nav {old_index}→{new_index}: scroll {before:.1f}→{after:.1f} (no intervention)\n")
+            def center_scroll() -> None:
+                before = options_list.scroll_y
+                options_list.scroll_y = target_scroll
+                with open(log_file, "a") as f:
+                    f.write(f"{datetime.datetime.now()} nav {old_index}→{new_index}: {before:.1f}→{target_scroll} (centered, vh={viewport_height})\n")
 
-            # Let Textual's native auto-scroll handle visibility
+            self.set_timer(0.05, center_scroll)
             self._refresh_details()
         except Exception as e:
             with open(log_file, "a") as f:
