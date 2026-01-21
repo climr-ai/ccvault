@@ -405,6 +405,11 @@ Footer {
     color: $primary;
 }
 
+.spell-item.selected {
+    background: $primary-darken-2;
+    text-style: bold;
+}
+
 /* Inventory Screen */
 #inventory-container {
     width: 100%;

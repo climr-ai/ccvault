@@ -4551,7 +4551,7 @@ class CharacterEditorScreen(Screen):
 
     def action_edit_info(self) -> None:
         """Edit character info."""
-        self.notify("Info editor coming soon!", severity="information")
+        self.app.push_screen(InfoEditorScreen(self.character))
 
     def action_edit_custom_stats(self) -> None:
         """Edit custom stats (Luck, Renown, etc.)."""
@@ -5174,6 +5174,195 @@ class HPEditorScreen(Screen):
         self.app.pop_screen()
 
 
+class InfoEditorScreen(Screen):
+    """Screen for editing character info (name, alignment)."""
+
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+        Binding("s", "save", "Save"),
+        Binding("up", "prev_alignment", "Prev Alignment", show=False),
+        Binding("down", "next_alignment", "Next Alignment", show=False),
+    ]
+
+    def __init__(self, character: Character, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+        self.edited_name = character.name
+        self.edited_alignment = character.alignment
+        self._alignments = list(Alignment)
+        self._alignment_index = self._alignments.index(character.alignment)
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Container(
+            Static("Edit Character Info", classes="title"),
+            Static("[S] Save  [Esc] Cancel", classes="subtitle"),
+            Vertical(
+                Static("Name:", classes="panel-title"),
+                Input(value=self.character.name, id="name-input"),
+                Static(""),
+                Static("Alignment: (use ↑↓ to change)", classes="panel-title"),
+                Static(self.edited_alignment.display_name, id="alignment-display", classes="hp-display"),
+                Static(""),
+                Static(f"Class: {self.character.primary_class.name} {self.character.primary_class.level}", classes="hint"),
+                Static(f"{self.character.get_species_term()}: {self.character.species or 'Not set'}", classes="hint"),
+                Static(f"Background: {self.character.background or 'Not set'}", classes="hint"),
+                classes="panel hp-editor-panel",
+            ),
+            id="editor-container",
+        )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        """Focus the name input."""
+        self.query_one("#name-input", Input).focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Track name changes."""
+        if event.input.id == "name-input":
+            self.edited_name = event.value
+
+    def action_prev_alignment(self) -> None:
+        """Cycle to previous alignment."""
+        self._alignment_index = (self._alignment_index - 1) % len(self._alignments)
+        self.edited_alignment = self._alignments[self._alignment_index]
+        self.query_one("#alignment-display", Static).update(self.edited_alignment.display_name)
+
+    def action_next_alignment(self) -> None:
+        """Cycle to next alignment."""
+        self._alignment_index = (self._alignment_index + 1) % len(self._alignments)
+        self.edited_alignment = self._alignments[self._alignment_index]
+        self.query_one("#alignment-display", Static).update(self.edited_alignment.display_name)
+
+    def action_save(self) -> None:
+        """Save character info changes."""
+        name = self.edited_name.strip()
+        if not name:
+            self.notify("Name cannot be empty", severity="error")
+            return
+
+        self.character.name = name
+        self.character.alignment = self.edited_alignment
+        self.app.save_character()
+        self.notify("Character info saved!")
+        self.app.pop_screen()
+
+    def action_back(self) -> None:
+        """Go back without saving."""
+        self.app.pop_screen()
+
+
+class CurrencyEditorScreen(Screen):
+    """Screen for managing currency (gold, silver, copper, etc.)."""
+
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+        Binding("s", "save", "Save"),
+    ]
+
+    def __init__(self, character: Character, on_save=None, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+        self.on_save = on_save
+        # Track edited values
+        self.edited_currency = {
+            "pp": character.equipment.currency.pp,
+            "gp": character.equipment.currency.gp,
+            "ep": character.equipment.currency.ep,
+            "sp": character.equipment.currency.sp,
+            "cp": character.equipment.currency.cp,
+        }
+
+    def compose(self) -> ComposeResult:
+        c = self.character.equipment.currency
+        yield Header()
+        yield Container(
+            Static("Manage Currency", classes="title"),
+            Static("[S] Save  [Esc] Cancel", classes="subtitle"),
+            Vertical(
+                Horizontal(
+                    Static("Platinum (pp):", classes="currency-label"),
+                    Input(value=str(c.pp), id="input-pp", type="integer"),
+                    classes="currency-input-row",
+                ),
+                Horizontal(
+                    Static("Gold (gp):    ", classes="currency-label"),
+                    Input(value=str(c.gp), id="input-gp", type="integer"),
+                    classes="currency-input-row",
+                ),
+                Horizontal(
+                    Static("Electrum (ep):", classes="currency-label"),
+                    Input(value=str(c.ep), id="input-ep", type="integer"),
+                    classes="currency-input-row",
+                ),
+                Horizontal(
+                    Static("Silver (sp):  ", classes="currency-label"),
+                    Input(value=str(c.sp), id="input-sp", type="integer"),
+                    classes="currency-input-row",
+                ),
+                Horizontal(
+                    Static("Copper (cp):  ", classes="currency-label"),
+                    Input(value=str(c.cp), id="input-cp", type="integer"),
+                    classes="currency-input-row",
+                ),
+                Static("", classes="spacer"),
+                Static(id="total-display", classes="currency-total"),
+                classes="panel currency-editor-panel",
+            ),
+            id="currency-editor-container",
+        )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        """Focus first input and update total."""
+        self.query_one("#input-pp", Input).focus()
+        self._update_total()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Handle input changes - update total display."""
+        self._update_total()
+
+    def _update_total(self) -> None:
+        """Update the total gold value display."""
+        try:
+            pp = int(self.query_one("#input-pp", Input).value or 0)
+            gp = int(self.query_one("#input-gp", Input).value or 0)
+            ep = int(self.query_one("#input-ep", Input).value or 0)
+            sp = int(self.query_one("#input-sp", Input).value or 0)
+            cp = int(self.query_one("#input-cp", Input).value or 0)
+
+            total = (pp * 10) + gp + (ep * 0.5) + (sp * 0.1) + (cp * 0.01)
+            self.query_one("#total-display", Static).update(f"Total value: {total:.2f} gp")
+        except (ValueError, Exception):
+            pass
+
+    def action_save(self) -> None:
+        """Save currency changes."""
+        try:
+            pp = max(0, int(self.query_one("#input-pp", Input).value or 0))
+            gp = max(0, int(self.query_one("#input-gp", Input).value or 0))
+            ep = max(0, int(self.query_one("#input-ep", Input).value or 0))
+            sp = max(0, int(self.query_one("#input-sp", Input).value or 0))
+            cp = max(0, int(self.query_one("#input-cp", Input).value or 0))
+
+            self.character.equipment.currency.pp = pp
+            self.character.equipment.currency.gp = gp
+            self.character.equipment.currency.ep = ep
+            self.character.equipment.currency.sp = sp
+            self.character.equipment.currency.cp = cp
+
+            self.notify("Currency updated!")
+            if self.on_save:
+                self.on_save()
+            self.app.pop_screen()
+        except ValueError:
+            self.notify("Invalid currency values", severity="error")
+
+    def action_back(self) -> None:
+        """Go back without saving."""
+        self.app.pop_screen()
+
+
 class InventoryScreen(ListNavigationMixin, Screen):
     """Screen for managing equipment and inventory."""
 
@@ -5182,6 +5371,7 @@ class InventoryScreen(ListNavigationMixin, Screen):
         Binding("+", "add_item", "Add Item"),
         Binding("-", "drop_item", "Drop Item"),
         Binding("enter", "equip_toggle", "Equip/Unequip"),
+        Binding("g", "manage_gold", "Manage Gold"),
     ]
 
     def __init__(self, character: Character, **kwargs) -> None:
@@ -5303,7 +5493,21 @@ class InventoryScreen(ListNavigationMixin, Screen):
 
     def action_manage_gold(self) -> None:
         """Manage currency."""
-        self.notify("Currency management coming soon!", severity="information")
+        self.app.push_screen(CurrencyEditorScreen(self.character, on_save=self._on_currency_saved))
+
+    def _on_currency_saved(self) -> None:
+        """Handle currency update callback."""
+        self._refresh_currency_bar()
+        self.app.save_character()
+
+    def _refresh_currency_bar(self) -> None:
+        """Refresh the currency display bar."""
+        c = self.character.equipment.currency
+        try:
+            bar = self.query_one(".currency-bar", Static)
+            bar.update(f"💰 {c.pp}pp | {c.gp}gp | {c.ep}ep | {c.sp}sp | {c.cp}cp")
+        except Exception:
+            pass
 
     # ListNavigationMixin implementation
     def _get_list_items(self) -> list:
@@ -6059,6 +6263,10 @@ class SpellsScreen(Screen):
         Binding("r", "rest", "Rest (Recover Slots)"),
         Binding("/", "search", "Search"),
         Binding("b", "browse", "Browse Spells"),
+        Binding("up", "move_up", "Up", show=False),
+        Binding("down", "move_down", "Down", show=False),
+        Binding("k", "move_up", "Up", show=False),
+        Binding("j", "move_down", "Down", show=False),
     ]
 
     def __init__(self, character: Character, **kwargs) -> None:
@@ -6066,6 +6274,8 @@ class SpellsScreen(Screen):
         self.character = character
         self.selected_spell: Optional[str] = None
         self.selected_level: int = 0
+        self.selected_spell_index: int = 0
+        self._spell_list: list[str] = []  # Current list of spells for selection
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -6139,16 +6349,25 @@ class SpellsScreen(Screen):
         known = self.character.spellcasting.known or []
         prepared = set(self.character.spellcasting.prepared or [])
 
+        # Update spell list for selection tracking
+        self._spell_list = sorted(known) if known else []
+        if self._spell_list and self.selected_spell_index >= len(self._spell_list):
+            self.selected_spell_index = len(self._spell_list) - 1
+
         if not known:
             spells_list.mount(Static("  No spells known yet", classes="empty-state"))
             spells_list.mount(Static("  Press [B] to browse spells", classes="empty-state-hint"))
         else:
             # Group by level (simple approach - just list them)
-            for spell in sorted(known):
+            for idx, spell in enumerate(self._spell_list):
                 is_prepared = spell in prepared
+                is_selected = idx == self.selected_spell_index
                 prefix = "◆" if is_prepared else "○"
+                select_marker = "▶" if is_selected else " "
                 spell_class = "spell-item prepared" if is_prepared else "spell-item"
-                spells_list.mount(Static(f"  {prefix} {spell}", classes=spell_class))
+                if is_selected:
+                    spell_class += " selected"
+                spells_list.mount(Static(f"{select_marker} {prefix} {spell}", classes=spell_class))
 
     def _refresh_slots_detail(self) -> None:
         """Refresh the spell slots detail panel."""
@@ -6191,9 +6410,41 @@ class SpellsScreen(Screen):
 
         self.notify("No spell slots remaining!", severity="error")
 
+    def action_move_up(self) -> None:
+        """Move selection up in the spell list."""
+        if self._spell_list and self.selected_spell_index > 0:
+            self.selected_spell_index -= 1
+            self._refresh_spells()
+
+    def action_move_down(self) -> None:
+        """Move selection down in the spell list."""
+        if self._spell_list and self.selected_spell_index < len(self._spell_list) - 1:
+            self.selected_spell_index += 1
+            self._refresh_spells()
+
     def action_toggle_prepared(self) -> None:
-        """Toggle prepared status of a spell."""
-        self.notify("Select a spell to toggle (feature coming soon)", severity="information")
+        """Toggle prepared status of the selected spell."""
+        if not self._spell_list:
+            self.notify("No spells to prepare", severity="warning")
+            return
+
+        spell_name = self._spell_list[self.selected_spell_index]
+        prepared = self.character.spellcasting.prepared or []
+
+        if spell_name in prepared:
+            # Remove from prepared
+            prepared.remove(spell_name)
+            self.character.spellcasting.prepared = prepared
+            self.app.save_character()
+            self.notify(f"Unprepared: {spell_name}")
+        else:
+            # Add to prepared
+            prepared.append(spell_name)
+            self.character.spellcasting.prepared = prepared
+            self.app.save_character()
+            self.notify(f"Prepared: {spell_name}")
+
+        self._refresh_spells()
 
     def action_rest(self) -> None:
         """Recover spell slots (long rest)."""
