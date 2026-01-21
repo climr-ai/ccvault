@@ -18,10 +18,12 @@ def create_parser() -> argparse.ArgumentParser:
         description="CLIMR Character Vault - D&D 5e Character Manager",
     )
 
+    # Get version from config (used as fallback if package metadata unavailable)
+    config = get_config_manager().config
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.1.0",
+        version=f"%(prog)s {config.versions.app_version}",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -44,8 +46,8 @@ def create_parser() -> argparse.ArgumentParser:
     new_parser.add_argument(
         "--class",
         dest="char_class",
-        default="Fighter",
-        help="Starting class (default: Fighter)",
+        default=None,
+        help=f"Starting class (default: {config.character_defaults.class_name})",
     )
     new_parser.add_argument(
         "--level",
@@ -1392,7 +1394,9 @@ def cmd_notes(args: argparse.Namespace) -> int:
         # Get content from editor if not provided
         content = args.content
         if not content:
-            editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "nano"))
+            config = get_config_manager().config
+            fallback = config.ui.fallback_editor
+            editor = os.environ.get("EDITOR", os.environ.get("VISUAL", fallback))
             with tempfile.NamedTemporaryFile(
                 mode="w",
                 suffix=".md",
@@ -1563,7 +1567,9 @@ def main() -> int:
         return cmd_list()
 
     if args.command == "new":
-        return cmd_new(args.name, args.char_class, args.level)
+        # Use config default if class not specified
+        char_class = args.char_class or config.character_defaults.class_name
+        return cmd_new(args.name, char_class, args.level)
 
     if args.command == "show":
         return cmd_show(args.name)

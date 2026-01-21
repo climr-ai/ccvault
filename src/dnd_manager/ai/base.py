@@ -7,6 +7,17 @@ from enum import Enum
 from typing import Any, AsyncIterator, Optional, Union
 
 
+def get_ai_defaults() -> tuple[int, float]:
+    """Get AI generation defaults (max_tokens, temperature) from config.
+
+    Returns:
+        Tuple of (max_tokens, temperature)
+    """
+    from dnd_manager.config import get_config_manager
+    config = get_config_manager().config
+    return config.ai_generation.max_tokens, config.ai_generation.temperature
+
+
 class MessageRole(str, Enum):
     """Role of a message in the conversation."""
     SYSTEM = "system"

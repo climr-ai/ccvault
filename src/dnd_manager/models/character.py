@@ -1042,19 +1042,27 @@ class Character(BaseModel):
     def create_new(
         cls,
         name: str,
-        ruleset_id: RulesetId = RulesetId.DND_2024,
-        class_name: str = "Fighter",
+        ruleset_id: Optional[RulesetId] = None,
+        class_name: Optional[str] = None,
         player: Optional[str] = None,
     ) -> "Character":
         """Factory method to create a new character with ruleset defaults.
 
         Args:
             name: Character name
-            ruleset_id: Which ruleset to use
-            class_name: Starting class
+            ruleset_id: Which ruleset to use (defaults to config)
+            class_name: Starting class (defaults to config)
             player: Player name (optional)
         """
+        from dnd_manager.config import get_config_manager
         from dnd_manager.rulesets.base import RulesetRegistry
+
+        # Use config defaults if not specified
+        config = get_config_manager().config
+        if ruleset_id is None:
+            ruleset_id = RulesetId(config.character_defaults.ruleset)
+        if class_name is None:
+            class_name = config.character_defaults.class_name
 
         ruleset = RulesetRegistry.get(ruleset_id.value)
         if not ruleset:

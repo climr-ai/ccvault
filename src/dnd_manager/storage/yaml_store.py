@@ -12,7 +12,14 @@ import yaml
 from pydantic import BaseModel, ValidationError
 from platformdirs import user_data_dir
 
+from dnd_manager.config import get_config_manager
 from dnd_manager.models.character import Character
+
+
+def _get_storage_config():
+    """Get storage configuration values."""
+    config = get_config_manager().config.storage
+    return config.max_backups, config.backup_dir_name
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -122,15 +129,21 @@ class YAMLStore(Generic[T]):
 
         return path
 
-    def _create_backup(self, path: Path, max_backups: int = 3) -> Optional[Path]:
+    def _create_backup(self, path: Path, max_backups: Optional[int] = None) -> Optional[Path]:
         """Create a backup of a file.
 
         Keeps only the most recent `max_backups` backup files.
+        Uses config defaults if max_backups not specified.
         """
         if not path.exists():
             return None
 
-        backup_dir = self.directory / ".backups"
+        # Get config values
+        config_max_backups, backup_dir_name = _get_storage_config()
+        if max_backups is None:
+            max_backups = config_max_backups
+
+        backup_dir = self.directory / backup_dir_name
         backup_dir.mkdir(exist_ok=True)
 
         # Create timestamped backup
@@ -160,7 +173,8 @@ class YAMLStore(Generic[T]):
 
     def _get_latest_backup(self, name: str) -> Optional[Path]:
         """Get the most recent backup for a file."""
-        backup_dir = self.directory / ".backups"
+        _, backup_dir_name = _get_storage_config()
+        backup_dir = self.directory / backup_dir_name
         if not backup_dir.exists():
             return None
 
@@ -370,7 +384,8 @@ class CharacterStore:
 
     def list_backups(self, name: str) -> list[Path]:
         """List all backups for a character."""
-        backup_dir = self._store.directory / ".backups"
+        _, backup_dir_name = _get_storage_config()
+        backup_dir = self._store.directory / backup_dir_name
         if not backup_dir.exists():
             return []
 

@@ -164,28 +164,32 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         # Dynamic steps - subspecies and origin_feat may be skipped
         self.all_steps = ["name", "class", "species", "subspecies", "background", "origin_feat", "abilities", "confirm"]
 
-        # Load from draft or use defaults
+        # Get defaults from config
+        config = get_config_manager().config
+        defaults = config.character_defaults
+
+        # Load from draft or use config defaults
         if draft_data:
             self.step = draft_data.get("_step", 0)
             self.char_data = {
-                "name": draft_data.get("name", "New Hero"),
-                "class": draft_data.get("class", "Fighter"),
-                "species": draft_data.get("species", "Human"),
+                "name": draft_data.get("name", defaults.name),
+                "class": draft_data.get("class", defaults.class_name),
+                "species": draft_data.get("species", defaults.species),
                 "subspecies": draft_data.get("subspecies"),
-                "background": draft_data.get("background", "Soldier"),
+                "background": draft_data.get("background", defaults.background),
                 "origin_feat": draft_data.get("origin_feat"),
-                "ruleset": draft_data.get("ruleset", "dnd2024"),
+                "ruleset": draft_data.get("ruleset", defaults.ruleset),
             }
         else:
             self.step = 0
             self.char_data = {
-                "name": "New Hero",
-                "class": "Fighter",
-                "species": "Human",
+                "name": defaults.name,
+                "class": defaults.class_name,
+                "species": defaults.species,
                 "subspecies": None,
-                "background": "Soldier",
+                "background": defaults.background,
                 "origin_feat": None,
-                "ruleset": "dnd2024",
+                "ruleset": defaults.ruleset,
             }
 
         self.current_options: list[str] = []
@@ -810,12 +814,12 @@ class WelcomeScreen(Screen):
         return self._draft_store
 
     def _get_version(self) -> str:
-        """Get the application version."""
+        """Get the application version from package metadata or config."""
         try:
             from importlib.metadata import version
             return version("dnd-manager")
         except Exception:
-            return "dev"
+            return get_config_manager().config.versions.app_version
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -6579,12 +6583,13 @@ class SettingsScreen(Screen):
 
 
 def _get_app_version() -> str:
-    """Get the application version."""
+    """Get the application version from package metadata or config."""
     try:
         from importlib.metadata import version
         return version("dnd-manager")
     except Exception:
-        return "0.1.0"
+        # Fallback to config version
+        return get_config_manager().config.versions.app_version
 
 
 class DNDManagerApp(App):

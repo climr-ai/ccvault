@@ -21,6 +21,52 @@ SENSITIVE_KEYS = {
 }
 
 
+class CharacterDefaults(BaseModel):
+    """Default values for new characters."""
+
+    name: str = Field(default="New Hero", description="Default character name")
+    class_name: str = Field(default="Fighter", description="Default class")
+    species: str = Field(default="Human", description="Default species")
+    background: str = Field(default="Soldier", description="Default background")
+    ruleset: str = Field(default="dnd2024", description="Default ruleset (dnd2014, dnd2024, tov)")
+
+
+class GameRules(BaseModel):
+    """D&D game rule constants."""
+
+    max_level: int = Field(default=20, description="Maximum character level")
+    min_level: int = Field(default=1, description="Minimum character level")
+    base_ability_score: int = Field(default=10, description="Default ability score value")
+    min_ability_score: int = Field(default=1, description="Minimum ability score")
+    max_ability_score: int = Field(default=30, description="Maximum ability score (with magic)")
+    standard_ability_cap: int = Field(default=20, description="Ability score cap before magic items")
+    default_ac: int = Field(default=10, description="Default armor class")
+    default_speed: int = Field(default=30, description="Default movement speed in feet")
+    death_saves_required: int = Field(default=3, description="Death saves needed to stabilize/die")
+    default_hit_die: str = Field(default="d8", description="Default hit die if not specified")
+
+
+class AIGenerationConfig(BaseModel):
+    """AI text generation parameters."""
+
+    max_tokens: int = Field(default=1024, description="Maximum tokens in AI response")
+    temperature: float = Field(default=0.7, description="AI temperature (0.0-1.0)")
+
+
+class StorageConfig(BaseModel):
+    """Storage and backup settings."""
+
+    max_backups: int = Field(default=3, description="Maximum backup files to keep per character")
+    backup_dir_name: str = Field(default=".backups", description="Name of backup subdirectory")
+
+
+class VersionInfo(BaseModel):
+    """Version information."""
+
+    app_version: str = Field(default="0.1.0", description="Application version")
+    schema_version: str = Field(default="1.0", description="Character data schema version")
+
+
 class AIProviderConfig(BaseModel):
     """Configuration for an AI provider."""
 
@@ -61,6 +107,7 @@ class UIConfig(BaseModel):
     min_terminal_width: int = Field(default=120)
     min_terminal_height: int = Field(default=40)
     notes_editor: Optional[str] = Field(default=None, description="Override $EDITOR for notes")
+    fallback_editor: str = Field(default="nano", description="Editor when $EDITOR/$VISUAL not set")
 
 
 class EnforcementConfig(BaseModel):
@@ -150,10 +197,23 @@ class EnforcementConfig(BaseModel):
 class Config(BaseModel):
     """Application configuration."""
 
+    # Core settings
+    character_defaults: CharacterDefaults = Field(default_factory=CharacterDefaults)
+    game_rules: GameRules = Field(default_factory=GameRules)
+    versions: VersionInfo = Field(default_factory=VersionInfo)
+
+    # AI settings
     ai: AIConfig = Field(default_factory=AIConfig)
+    ai_generation: AIGenerationConfig = Field(default_factory=AIGenerationConfig)
+
+    # UI and storage
     ui: UIConfig = Field(default_factory=UIConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
+
+    # Rule enforcement
     enforcement: EnforcementConfig = Field(default_factory=EnforcementConfig)
-    default_ruleset: str = Field(default="dnd2024")
+
+    # Directory overrides (None = use defaults)
     character_directory: Optional[str] = Field(default=None)
     custom_content_directory: Optional[str] = Field(default=None)
 
