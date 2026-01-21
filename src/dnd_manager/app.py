@@ -738,7 +738,8 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 new_widget = widgets[new_index]
                 new_widget.update(f"▶ {self.current_options[new_index]}")
                 new_widget.add_class("selected")
-                # Don't call scroll_visible - Textual auto-scrolls on widget update
+                # Use scroll_to_center on the container
+                options_list.scroll_to_center(new_widget, animate=False)
 
             self._refresh_details()
         except Exception:
