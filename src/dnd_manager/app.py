@@ -312,6 +312,11 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
     def on_mount(self) -> None:
         """Initialize the first step."""
         self._show_step()
+        # Set default focus to the options list
+        try:
+            self.query_one("#options-list", OptionList).focus()
+        except Exception:
+            pass
 
     def _show_step(self) -> None:
         """Display the current step."""

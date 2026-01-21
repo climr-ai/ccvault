@@ -119,7 +119,7 @@ wheels = [
 
 [[package]]
 name = "ccvault"
-version = "0.1.8"
+version = "0.1.14"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
