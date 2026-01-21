@@ -23,7 +23,7 @@ class TestConfig:
         assert config.ai.default_provider == "gemini"
         assert config.ai.gemini.enabled is True
         assert config.ai.gemini.auto_classify is True
-        assert config.default_ruleset == "dnd2024"
+        assert config.character_defaults.ruleset == "dnd2024"
 
     def test_config_to_dict(self):
         """Test converting config to dict."""
@@ -65,7 +65,7 @@ class TestConfigManager:
 
         assert manager.get("ai.default_provider") == "gemini"
         assert manager.get("ai.gemini.enabled") is True
-        assert manager.get("default_ruleset") == "dnd2024"
+        assert manager.get("character_defaults.ruleset") == "dnd2024"
 
     def test_get_nested_setting(self):
         """Test getting deeply nested settings."""
