@@ -162,7 +162,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         self._last_letter: str = ""
         self._last_letter_index: int = -1
         # Dynamic steps - subspecies and origin_feat may be skipped
-        self.all_steps = ["name", "class", "species", "subspecies", "background", "origin_feat", "abilities", "confirm"]
+        self.all_steps = ["ruleset", "name", "class", "species", "subspecies", "background", "origin_feat", "abilities", "confirm"]
 
         # Get defaults from config
         config = get_config_manager().config
@@ -273,6 +273,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         # Build visual progress bar
         step_icons = []
         step_labels = {
+            "ruleset": "Rules",
             "name": "Name",
             "class": "Class",
             "species": "Species",
@@ -309,7 +310,13 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         back_btn.disabled = self.step == 0
         next_btn.label = "Create Character" if step_name == "confirm" else "Next →"
 
-        if step_name == "name":
+        if step_name == "ruleset":
+            title.update("CHOOSE RULESET")
+            description.update("Select which D&D rules system to use")
+            self.current_options = ["D&D 2024 (5.5e)", "D&D 2014 (5e)", "Tales of the Valiant"]
+            self._refresh_options()
+
+        elif step_name == "name":
             title.update("CHARACTER NAME")
             description.update("Enter your character's name")
             name_input.value = self.char_data["name"]
@@ -424,7 +431,9 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
         selected_name = self.current_options[self.selected_option]
 
-        if step_name == "class":
+        if step_name == "ruleset":
+            self._show_ruleset_details(selected_name, detail_title, detail_content)
+        elif step_name == "class":
             self._show_class_details(selected_name, detail_title, detail_content)
         elif step_name == "species":
             self._show_species_details(selected_name, detail_title, detail_content)
@@ -437,6 +446,64 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         else:
             detail_title.update(selected_name)
             detail_content.update("")
+
+    def _show_ruleset_details(self, ruleset_name: str, title: Static, content: Static) -> None:
+        """Show details for a ruleset."""
+        ruleset_info = {
+            "D&D 2024 (5.5e)": {
+                "title": "📖 D&D 2024 (5.5e)",
+                "description": "The latest edition of Dungeons & Dragons, released in 2024.",
+                "features": [
+                    "Origin feats from backgrounds",
+                    "Weapon mastery system",
+                    "Updated class features",
+                    "Flexible ability score increases",
+                    "Revised spellcasting rules",
+                ],
+                "best_for": "Players who want the newest rules and features.",
+            },
+            "D&D 2014 (5e)": {
+                "title": "📖 D&D 2014 (5e)",
+                "description": "The classic 5th Edition rules that have been the standard for a decade.",
+                "features": [
+                    "Background features (not feats)",
+                    "Fixed racial ability bonuses",
+                    "Original class progression",
+                    "Tried and tested balance",
+                ],
+                "best_for": "Players familiar with classic 5e or using older sourcebooks.",
+            },
+            "Tales of the Valiant": {
+                "title": "📖 Tales of the Valiant",
+                "description": "A 5e-compatible ruleset from Kobold Press with unique innovations.",
+                "features": [
+                    "Lineage + Heritage system",
+                    "Luck mechanic",
+                    "Talent trees",
+                    "Compatible with 5e content",
+                ],
+                "best_for": "Players wanting fresh mechanics while staying 5e-compatible.",
+            },
+        }
+
+        info = ruleset_info.get(ruleset_name, {})
+        if not info:
+            title.update(ruleset_name)
+            content.update("No details available")
+            return
+
+        title.update(info["title"])
+
+        lines = []
+        lines.append(info["description"])
+        lines.append("")
+        lines.append("KEY FEATURES")
+        for feature in info["features"]:
+            lines.append(f"  • {feature}")
+        lines.append("")
+        lines.append(f"Best for: {info['best_for']}")
+
+        content.update("\n".join(lines))
 
     def _show_class_details(self, class_name: str, title: Static, content: Static) -> None:
         """Show details for a class."""
@@ -658,7 +725,16 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         step_name = self.steps[self.step]
 
         # Save current step data
-        if step_name == "name":
+        if step_name == "ruleset":
+            # Map display name to ruleset ID
+            ruleset_map = {
+                "D&D 2024 (5.5e)": "dnd2024",
+                "D&D 2014 (5e)": "dnd2014",
+                "Tales of the Valiant": "tov",
+            }
+            selected = self.current_options[self.selected_option]
+            self.char_data["ruleset"] = ruleset_map.get(selected, "dnd2024")
+        elif step_name == "name":
             name = self.query_one("#name-input", Input).value.strip()
             if not name:
                 self.notify("Please enter a name", severity="warning")
