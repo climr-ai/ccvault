@@ -1680,7 +1680,7 @@ class WelcomeScreen(Screen):
             self.button_ids = ["btn-new", "btn-resume", "btn-open", "btn-quit"]
             resume_btn.display = True
             # Show draft info
-            notice.update(f"Draft: {draft_info['name']} ({draft_info['class']} {draft_info['species']}) - Press [R] to resume")
+            notice.update(f"Draft: {draft_info['name']} ({draft_info['class']} {draft_info['species']}) - Press \\[R] to resume")
             notice.display = True
         else:
             self._has_draft = False
@@ -2070,7 +2070,7 @@ class PreparedSpells(Static):
         prepared = self.character.spellcasting.prepared
         if not prepared:
             yield Static("No spells prepared", classes="empty-state")
-            yield Static("Press [S] to browse spells", classes="empty-state-hint")
+            yield Static("Press \\[S] to browse spells", classes="empty-state-hint")
             return
 
         # Show up to 10 prepared spells
@@ -2570,7 +2570,7 @@ class HomebrewScreen(Screen):
             else:
                 content.mount(Static("  No specific guidelines found for this content type.", classes="no-content"))
                 content.mount(Static(""))
-                content.mount(Static("  Use the AI Homebrew Chat [A] to create balanced content", classes="hint"))
+                content.mount(Static("  Use the AI Homebrew Chat \\[A] to create balanced content", classes="hint"))
                 content.mount(Static("  with AI assistance.", classes="hint"))
 
             # Add general tips at the bottom
@@ -2582,14 +2582,14 @@ class HomebrewScreen(Screen):
             content.mount(Static("  • Consider edge cases and combos", classes="tip"))
             content.mount(Static("  • Playtest before finalizing", classes="tip"))
             content.mount(Static(""))
-            content.mount(Static("  Press [A] to start an AI-assisted homebrew session", classes="hint"))
+            content.mount(Static("  Press \\[A] to start an AI-assisted homebrew session", classes="hint"))
 
         except Exception as e:
             content = self.query_one("#guidelines-content", VerticalScroll)
             content.remove_children()
             content.mount(Static(f"  Error loading guidelines: {e}", classes="error"))
             content.mount(Static(""))
-            content.mount(Static("  You can still use AI Homebrew Chat [A] for assistance.", classes="hint"))
+            content.mount(Static("  You can still use AI Homebrew Chat \\[A] for assistance.", classes="hint"))
 
     def _switch_type(self, type_id: str) -> None:
         """Switch to a different content type."""
@@ -2932,9 +2932,9 @@ class LibraryBrowserScreen(ListNavigationMixin, Screen):
 
         # Installation status
         if self.library.is_installed(item.id):
-            details_widget.mount(Static("  [INSTALLED]", classes="installed-badge"))
+            details_widget.mount(Static("  \\[INSTALLED]", classes="installed-badge"))
         else:
-            details_widget.mount(Static("  Press [I] to install", classes="hint"))
+            details_widget.mount(Static("  Press \\[I] to install", classes="hint"))
 
         details_widget.mount(Static(""))
         details_widget.mount(Static("  ─────────────────────", classes="separator"))
@@ -3151,7 +3151,7 @@ class MulticlassSelectScreen(Screen):
             VerticalScroll(id="class-list", classes="options-list"),
             Static("", id="req-info"),
             Static(""),
-            Static("  [P] Primary Class  [Enter] Select  [Esc] Cancel", classes="hint"),
+            Static("  \\[P] Primary Class  \\[Enter] Select  \\[Esc] Cancel", classes="hint"),
             id="multiclass-container",
         )
         yield Footer()
@@ -3301,9 +3301,9 @@ class LevelManagementScreen(Screen):
                     Static("", id="level-display"),
                     Static("", id="class-display"),
                     Static(""),
-                    Static("  [↑/+] Increase Level", classes="option"),
-                    Static("  [↓/-] Decrease Level", classes="option"),
-                    Static("  [C]   Choose Class (Multiclass)", classes="option"),
+                    Static("  \\[↑/+] Increase Level", classes="option"),
+                    Static("  \\[↓/-] Decrease Level", classes="option"),
+                    Static("  \\[C]   Choose Class (Multiclass)", classes="option"),
                     Static(""),
                     Static("", id="hp-section"),
                     Static(""),
@@ -3319,7 +3319,7 @@ class LevelManagementScreen(Screen):
             ),
             Static("", id="warning-section", classes="warning-section"),
             Static(""),
-            Static("  [Enter] Save Changes  [Esc] Cancel", id="hint-text", classes="hint"),
+            Static("  \\[Enter] Save Changes  \\[Esc] Cancel", id="hint-text", classes="hint"),
             id="level-mgmt-container",
         )
         yield Footer()
@@ -3377,9 +3377,9 @@ class LevelManagementScreen(Screen):
         # Update hint text based on confirmation state
         hint_widget = self.query_one("#hint-text", Static)
         if self.confirming:
-            hint_widget.update("  ⚠ Press [Enter] again to CONFIRM changes  [Esc] Cancel")
+            hint_widget.update("  ⚠ Press \\[Enter] again to CONFIRM changes  \\[Esc] Cancel")
         else:
-            hint_widget.update("  [Enter] Save Changes  [Esc] Cancel")
+            hint_widget.update("  \\[Enter] Save Changes  \\[Esc] Cancel")
 
     def _update_hp_section(self) -> None:
         """Update HP configuration section."""
@@ -3958,7 +3958,7 @@ class LevelManagementScreen(Screen):
     def action_confirm(self) -> None:
         """Confirm the level up."""
         if not self.hp_rolled:
-            self.notify("Choose HP method first: [R]oll or [A]verage", severity="warning")
+            self.notify("Choose HP method first: \\[R]oll or \\[A]verage", severity="warning")
             return
 
         # Check ASI requirements
@@ -4512,7 +4512,7 @@ class CharacterEditorScreen(Screen):
                 classes="editor-row",
             ))
         container.compose_add_child(Static(""))
-        container.compose_add_child(Static("  Use [1] to edit scores", classes="hint"))
+        container.compose_add_child(Static("  Use \\[1] to edit scores", classes="hint"))
         return container
 
     def _build_combat_editor(self) -> Vertical:
@@ -4525,7 +4525,7 @@ class CharacterEditorScreen(Screen):
         container.compose_add_child(Static(f"  Speed: {c.combat.total_speed} ft", classes="editor-row"))
         container.compose_add_child(Static(f"  Hit Dice: {c.combat.hit_dice.remaining}/{c.combat.hit_dice.total}", classes="editor-row"))
         container.compose_add_child(Static(""))
-        container.compose_add_child(Static("  Use [2] to edit HP", classes="hint"))
+        container.compose_add_child(Static("  Use \\[2] to edit HP", classes="hint"))
         return container
 
     def _build_info_editor(self) -> Vertical:
@@ -4538,7 +4538,7 @@ class CharacterEditorScreen(Screen):
         container.compose_add_child(Static(f"  Background: {c.background or 'Not set'}", classes="editor-row"))
         container.compose_add_child(Static(f"  Alignment: {c.alignment.display_name}", classes="editor-row"))
         container.compose_add_child(Static(""))
-        container.compose_add_child(Static("  Use [3] to edit info", classes="hint"))
+        container.compose_add_child(Static("  Use \\[3] to edit info", classes="hint"))
         return container
 
     def action_edit_abilities(self) -> None:
@@ -4586,7 +4586,7 @@ class CustomStatsScreen(Screen):
         yield Header()
         yield Container(
             Static("Custom Stats", classes="title"),
-            Static("↑/↓ Select  ←/→ Adjust Value  [A] Add  [D] Delete  [T] Templates  [Esc] Back", classes="subtitle"),
+            Static("↑/↓ Select  ←/→ Adjust Value  \\[A] Add  \\[D] Delete  \\[T] Templates  \\[Esc] Back", classes="subtitle"),
             Horizontal(
                 Vertical(
                     Static("YOUR CUSTOM STATS", classes="panel-title"),
@@ -4619,7 +4619,7 @@ class CustomStatsScreen(Screen):
 
         if not self.character.custom_stats:
             list_widget.mount(Static("  (No custom stats)", classes="no-items"))
-            list_widget.mount(Static("  Press [A] to add or [T] for templates", classes="hint"))
+            list_widget.mount(Static("  Press \\[A] to add or \\[T] for templates", classes="hint"))
         else:
             for i, stat in enumerate(self.character.custom_stats):
                 stat_class = "stat-row"
@@ -4784,7 +4784,7 @@ class AbilityEditorScreen(Screen):
         yield Header()
         yield Container(
             Static("Edit Ability Scores", classes="title"),
-            Static("↑/↓ Select  ←/→ Adjust  [B] Bonuses  [S] Save  [Esc] Back", classes="subtitle"),
+            Static("↑/↓ Select  ←/→ Adjust  \\[B] Bonuses  \\[S] Save  \\[Esc] Back", classes="subtitle"),
             Horizontal(
                 Vertical(id="ability-list", classes="panel ability-panel"),
                 Vertical(id="bonus-details", classes="panel bonus-panel"),
@@ -4844,7 +4844,7 @@ class AbilityEditorScreen(Screen):
         else:
             details.mount(Static("  (No bonuses)", classes="no-items"))
             details.mount(Static(""))
-            details.mount(Static("  Press [B] to add bonuses", classes="hint"))
+            details.mount(Static("  Press \\[B] to add bonuses", classes="hint"))
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -4909,7 +4909,7 @@ class StatBonusScreen(Screen):
         yield Header()
         yield Container(
             Static(f"Stat Bonuses - {self.ability.upper()}", classes="title"),
-            Static("↑/↓ Select  [A] Add  [D] Delete  [T] Toggle Temp  [Esc] Back", classes="subtitle"),
+            Static("↑/↓ Select  \\[A] Add  \\[D] Delete  \\[T] Toggle Temp  \\[Esc] Back", classes="subtitle"),
             Horizontal(
                 Vertical(
                     Static("ACTIVE BONUSES", classes="panel-title"),
@@ -4948,7 +4948,7 @@ class StatBonusScreen(Screen):
         if not self.bonuses:
             list_widget.mount(Static("  (No bonuses)", classes="no-items"))
             list_widget.mount(Static(""))
-            list_widget.mount(Static("  Press [A] to add a bonus", classes="hint"))
+            list_widget.mount(Static("  Press \\[A] to add a bonus", classes="hint"))
         else:
             for i, bonus in enumerate(self.bonuses):
                 bonus_class = "bonus-row"
@@ -5433,7 +5433,7 @@ class InventoryScreen(ListNavigationMixin, Screen):
         items = self.character.equipment.items
         if not items:
             list_widget.mount(Static("  No items in inventory", classes="empty-state"))
-            list_widget.mount(Static("  Press [+] to add items", classes="empty-state-hint"))
+            list_widget.mount(Static("  Press \\[+] to add items", classes="empty-state-hint"))
             return
 
         for i, item in enumerate(items):
@@ -6356,7 +6356,7 @@ class SpellsScreen(Screen):
 
         if not known:
             spells_list.mount(Static("  No spells known yet", classes="empty-state"))
-            spells_list.mount(Static("  Press [B] to browse spells", classes="empty-state-hint"))
+            spells_list.mount(Static("  Press \\[B] to browse spells", classes="empty-state-hint"))
         else:
             # Group by level (simple approach - just list them)
             for idx, spell in enumerate(self._spell_list):
@@ -7236,8 +7236,8 @@ class ShortRestScreen(Screen):
                 Static(""),
                 Static("  Dice to Spend: 0", id="dice-count"),
                 Static(""),
-                Static("  [+] Add a die  [-] Remove a die", classes="option"),
-                Static("  [R] Roll selected dice", classes="option"),
+                Static("  \\[+] Add a die  \\[-] Remove a die", classes="option"),
+                Static("  \\[R] Roll selected dice", classes="option"),
                 Static(""),
                 Static("  HEALING ROLLS:", classes="section-header"),
                 VerticalScroll(id="healing-rolls", classes="healing-list"),
@@ -7299,9 +7299,9 @@ class ShortRestScreen(Screen):
         # Update confirm prompt
         confirm_widget = self.query_one("#confirm-prompt", Static)
         if self.awaiting_confirmation:
-            confirm_widget.update("  ➤ Take short rest? Press [Y] to confirm, [Esc] to cancel")
+            confirm_widget.update("  ➤ Take short rest? Press \\[Y] to confirm, \\[Esc] to cancel")
         else:
-            confirm_widget.update("  Press [Enter] to take short rest  [Esc] to cancel")
+            confirm_widget.update("  Press \\[Enter] to take short rest  \\[Esc] to cancel")
 
     def action_add_die(self) -> None:
         """Add a hit die to spend."""
@@ -7326,7 +7326,7 @@ class ShortRestScreen(Screen):
     def action_roll_hit_die(self) -> None:
         """Roll the selected hit dice for healing."""
         if self.dice_to_spend == 0:
-            self.notify("Add dice to spend first! Press [+]", severity="warning")
+            self.notify("Add dice to spend first! Press \\[+]", severity="warning")
             return
 
         from dnd_manager.dice import DiceRoller
@@ -7509,9 +7509,9 @@ class LongRestScreen(Screen):
         # Update confirm prompt
         confirm_widget = self.query_one("#confirm-prompt", Static)
         if self.awaiting_confirmation:
-            confirm_widget.update("  ➤ Take long rest? Press [Y] to confirm, [Esc] to cancel")
+            confirm_widget.update("  ➤ Take long rest? Press \\[Y] to confirm, \\[Esc] to cancel")
         else:
-            confirm_widget.update("  Press [Enter] to take long rest  [Esc] to cancel")
+            confirm_widget.update("  Press \\[Enter] to take long rest  \\[Esc] to cancel")
 
     def action_confirm(self) -> None:
         """Show confirmation prompt."""
@@ -7574,7 +7574,7 @@ class SettingsScreen(Screen):
         yield Header()
         yield Container(
             Static("Settings & Rule Enforcement", classes="title"),
-            Static("↑/↓ Navigate  [Enter/Space] Toggle  [R] Reset  [Esc] Back", classes="subtitle"),
+            Static("↑/↓ Navigate  \\[Enter/Space] Toggle  \\[R] Reset  \\[Esc] Back", classes="subtitle"),
             Horizontal(
                 Vertical(
                     Static("ENFORCEMENT OPTIONS", classes="panel-title"),
