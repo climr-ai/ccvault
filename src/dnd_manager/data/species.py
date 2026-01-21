@@ -51,7 +51,7 @@ class Species:
     name: str
     description: str
     size: str  # Small, Medium, Large
-    speed: int
+    speed: int  # Base speed (2014 rules)
     ability_bonuses: dict[str, int]  # Base bonuses (2014 rules)
     languages: list[str]
     traits: list[RacialTrait] = field(default_factory=list)
@@ -62,6 +62,13 @@ class Species:
     # Ruleset support
     ruleset: Optional[str] = None  # None = universal, "dnd2014", "dnd2024", "tov"
     flexible_asi: bool = False  # True for 2024 rules (choose +2/+1 or +1/+1/+1)
+    speed_2024: Optional[int] = None  # Override speed for 2024 rules (all species get 30 ft)
+
+    def get_speed(self, ruleset: str = "dnd2014") -> int:
+        """Get speed appropriate for the ruleset."""
+        if ruleset == "dnd2024" and self.speed_2024 is not None:
+            return self.speed_2024
+        return self.speed
 
 
 # =============================================================================
@@ -77,6 +84,7 @@ DWARF = Species(
     ),
     size="Medium",
     speed=25,
+    speed_2024=30,  # 2024 PHB removed small race speed penalty
     ability_bonuses={"Constitution": 2},
     languages=["Common", "Dwarvish"],
     darkvision=60,
@@ -236,6 +244,7 @@ HALFLING = Species(
     ),
     size="Small",
     speed=25,
+    speed_2024=30,  # 2024 PHB removed small race speed penalty
     ability_bonuses={"Dexterity": 2},
     languages=["Common", "Halfling"],
     darkvision=0,
@@ -394,6 +403,7 @@ GNOME = Species(
     ),
     size="Small",
     speed=25,
+    speed_2024=30,  # 2024 PHB removed small race speed penalty
     ability_bonuses={"Intelligence": 2},
     languages=["Common", "Gnomish"],
     darkvision=60,
@@ -1811,6 +1821,7 @@ DEEP_GNOME = Species(
     ),
     size="Small",
     speed=25,
+    speed_2024=30,  # 2024 rules removed small race speed penalty
     ability_bonuses={"Intelligence": 2, "Dexterity": 1},
     languages=["Common", "Gnomish", "Undercommon"],
     darkvision=120,
@@ -1846,6 +1857,7 @@ DUERGAR = Species(
     ),
     size="Medium",
     speed=25,
+    speed_2024=30,  # 2024 rules removed dwarf speed penalty
     ability_bonuses={"Constitution": 2, "Strength": 1},
     languages=["Common", "Dwarvish", "Undercommon"],
     darkvision=120,
@@ -2002,6 +2014,7 @@ GRUNG = Species(
     ),
     size="Small",
     speed=25,
+    speed_2024=30,  # 2024 rules removed small race speed penalty
     ability_bonuses={"Dexterity": 2, "Constitution": 1},
     languages=["Common", "Grung"],
     darkvision=0,

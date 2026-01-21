@@ -673,6 +673,10 @@ Footer {
     background: $surface-darken-1;
 }
 
+#detail-panel:focus {
+    border: double $primary;
+}
+
 #detail-title {
     text-style: bold;
     color: $primary;

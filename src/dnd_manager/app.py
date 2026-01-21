@@ -295,6 +295,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                     Static(id="detail-content"),
                     id="detail-panel",
                     classes="panel creation-panel creation-right",
+                    can_focus=True,
                 ),
                 classes="creation-row",
             ),
@@ -659,7 +660,8 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         lines.append(species.description)
         lines.append("")
         lines.append(f"Size: {species.size}")
-        lines.append(f"Speed: {species.speed} ft.")
+        ruleset = self.char_data.get("ruleset", "dnd2024")
+        lines.append(f"Speed: {species.get_speed(ruleset)} ft.")
         if species.darkvision:
             lines.append(f"Darkvision: {species.darkvision} ft.")
         lines.append(f"Languages: {', '.join(species.languages)}")
@@ -669,11 +671,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             lines.append("RACIAL TRAITS")
             for trait in species.traits:
                 lines.append(f"  • {trait.name}")
-                # Wrap long descriptions
-                if len(trait.description) > 60:
-                    lines.append(f"    {trait.description[:60]}...")
-                else:
-                    lines.append(f"    {trait.description}")
+                lines.append(f"    {trait.description}")
 
         if species.subraces:
             lines.append("")
@@ -1423,6 +1421,9 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         # Add racial traits from species data
         species = get_species(self.char_data["species"])
         if species:
+            # Set speed from species (ruleset-aware)
+            char.combat.speed = species.get_speed(ruleset)
+
             for trait in species.traits:
                 char.features.append(Feature(
                     name=trait.name,
