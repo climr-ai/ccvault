@@ -81,11 +81,7 @@ class ListNavigationMixin:
         return "selected"
 
     def _scroll_to_selection(self) -> None:
-        """Scroll to keep the selected item visible in the viewport.
-
-        Uses scroll_to_widget which scrolls minimum amount needed to make
-        the widget visible.
-        """
+        """Scroll to keep the selected item centered in the viewport."""
         container = self._get_scroll_container()
         if container is None:
             return
@@ -101,8 +97,8 @@ class ListNavigationMixin:
 
             if self.selected_index < len(widgets):
                 selected_widget = widgets[self.selected_index]
-                # Scroll minimum amount to make widget visible
-                container.scroll_to_widget(selected_widget, animate=False)
+                # Center the selected item in the viewport
+                container.scroll_to_center(selected_widget, animate=False)
         except Exception:
             pass
 
