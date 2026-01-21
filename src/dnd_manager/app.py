@@ -77,33 +77,28 @@ class ListNavigationMixin:
             return
 
         try:
-            # Find all item widgets in the container
-            item_class = self._get_item_widget_class()
-            widgets = list(container.query(f".{item_class}")) if item_class else list(container.children)
+            # Each item is typically 1 row high in terminal
+            item_height = 1
+            total_items = len(items)
 
-            if self.selected_index >= len(widgets):
-                return
-
-            selected_widget = widgets[self.selected_index]
-
-            # Get the widget's position relative to the container's content
-            widget_y = selected_widget.region.y
-            widget_height = selected_widget.region.height
+            # Calculate where the selected item is in the content
+            # (index * height gives position from top of content)
+            item_position = self.selected_index * item_height
 
             # Get viewport height
             viewport_height = container.size.height
 
-            # Calculate the scroll position that centers the selected item
-            # Center point of the widget should be at center of viewport
-            widget_center = widget_y + (widget_height // 2)
-            viewport_center = viewport_height // 2
-            target_scroll = widget_center - viewport_center
+            # Calculate scroll position to center the selected item
+            # We want: item_position - scroll_y = viewport_height / 2
+            # So: scroll_y = item_position - viewport_height / 2
+            target_scroll = item_position - (viewport_height // 2)
 
             # Clamp to valid scroll range
-            max_scroll = container.virtual_size.height - viewport_height
+            total_content_height = total_items * item_height
+            max_scroll = max(0, total_content_height - viewport_height)
             target_scroll = max(0, min(target_scroll, max_scroll))
 
-            # Set scroll position directly
+            # Set scroll position
             container.scroll_y = target_scroll
 
         except Exception:
