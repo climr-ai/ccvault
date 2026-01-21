@@ -8,7 +8,8 @@ from typing import Optional
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
-from textual.widgets import Header, Footer, Static, Button, Label, Input, RichLog
+from textual.widgets import Header, Footer, Static, Button, Label, Input, RichLog, OptionList
+from textual.widgets.option_list import Option
 from textual.screen import Screen
 from textual.message import Message
 
@@ -211,6 +212,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         self.current_options: list[str] = []
         self.selected_option = 0
         self._draft_store = None
+        self._expected_highlight = 0  # Track expected highlight to ignore spurious events
 
     @property
     def draft_store(self):
@@ -251,7 +253,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 Vertical(
                     Static(id="step-title", classes="panel-title"),
                     Input(placeholder="Enter name...", id="name-input"),
-                    VerticalScroll(id="options-list", classes="options-list"),
+                    OptionList(id="options-list", classes="options-list"),
                     Static(id="step-description"),
                     classes="panel creation-panel creation-left",
                 ),
@@ -313,7 +315,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
         title = self.query_one("#step-title", Static)
         name_input = self.query_one("#name-input", Input)
-        options_list = self.query_one("#options-list", VerticalScroll)
+        options_list = self.query_one("#options-list", OptionList)
         description = self.query_one("#step-description", Static)
 
         # Hide/show elements based on step
@@ -409,21 +411,29 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
     def _refresh_options(self) -> None:
         """Rebuild the options list. Only call on step transitions, not navigation."""
+        import datetime
+        log_file = "/tmp/dnd_scroll_debug.log"
+
         try:
-            options_list = self.query_one("#options-list", VerticalScroll)
+            options_list = self.query_one("#options-list", OptionList)
         except Exception:
             # Screen not mounted yet
             return
 
-        # Rebuild all widgets for the new step
-        options_list.remove_children()
+        # Clear and rebuild options
+        options_list.clear_options()
         for i, option in enumerate(self.current_options):
-            selected = "▶ " if i == self.selected_option else "  "
-            options_list.mount(ClickableListItem(
-                f"{selected}{option}",
-                index=i,
-                classes=f"option-item {'selected' if i == self.selected_option else ''}",
-            ))
+            options_list.add_option(Option(option, id=f"opt_{i}"))
+
+        # Set highlighted option and track expected value
+        if self.current_options and self.selected_option < len(self.current_options):
+            self._expected_highlight = self.selected_option
+            options_list.highlighted = self.selected_option
+        else:
+            self._expected_highlight = 0
+
+        with open(log_file, "a") as f:
+            f.write(f"{datetime.datetime.now()} _refresh_options: {len(self.current_options)} options, highlighted={self.selected_option}, expected={self._expected_highlight}\n")
 
         self._refresh_details()
 
@@ -713,54 +723,30 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         return str(item)
 
     def _get_scroll_container(self):
-        try:
-            return self.query_one("#options-list", VerticalScroll)
-        except Exception:
-            return None
+        # OptionList handles its own scrolling
+        return None
 
     def _get_item_widget_class(self) -> str:
-        return "option-item"
+        return "option-list--option"  # OptionList's internal class
 
-    def _update_selection_visual(self, old_index: int, new_index: int) -> None:
-        """Update just the two widgets that changed during navigation."""
+    def _update_selection(self) -> None:
+        """Update the OptionList to reflect current selection."""
         import datetime
         log_file = "/tmp/dnd_scroll_debug.log"
 
         try:
-            options_list = self.query_one("#options-list", VerticalScroll)
-            widgets = list(options_list.query(".option-item"))
+            options_list = self.query_one("#options-list", OptionList)
+            if self.selected_option < len(self.current_options):
+                options_list.highlighted = self.selected_option
+                options_list.scroll_to_highlight()
 
-            # Update old widget (remove selection)
-            if 0 <= old_index < len(widgets):
-                old_widget = widgets[old_index]
-                old_widget.update(f"  {self.current_options[old_index]}")
-                old_widget.remove_class("selected")
-
-            # Update new widget (add selection)
-            if 0 <= new_index < len(widgets):
-                new_widget = widgets[new_index]
-                new_widget.update(f"▶ {self.current_options[new_index]}")
-                new_widget.add_class("selected")
-
-            # Calculate centered scroll position and apply after Textual's auto-scroll
-            viewport_height = options_list.size.height
-            target_scroll = max(0, new_index - viewport_height // 2)
-            target_scroll = min(target_scroll, options_list.max_scroll_y)
-
-            def center_scroll() -> None:
-                before = options_list.scroll_y
-                options_list.scroll_y = target_scroll
                 with open(log_file, "a") as f:
-                    f.write(f"{datetime.datetime.now()} nav {old_index}→{new_index}: {before:.1f}→{target_scroll} (centered, vh={viewport_height})\n")
+                    f.write(f"{datetime.datetime.now()} _update_selection: highlighted={self.selected_option}, scroll_to_highlight called\n")
 
-            self.set_timer(0.05, center_scroll)
             self._refresh_details()
         except Exception as e:
             with open(log_file, "a") as f:
-                f.write(f"ERROR: {e}\n")
-
-    def _update_selection(self) -> None:
-        self._refresh_options()
+                f.write(f"ERROR in _update_selection: {e}\n")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -880,27 +866,6 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         self.app.pop_screen()
         self.app.push_screen(MainDashboard(char))
 
-    def action_prev_option(self) -> None:
-        """Select previous option."""
-        if self.current_options and self.selected_option > 0:
-            old_index = self.selected_option
-            self.selected_option -= 1
-            self._update_selection_visual(old_index, self.selected_option)
-
-    def action_next_option(self) -> None:
-        """Select next option."""
-        if self.current_options and self.selected_option < len(self.current_options) - 1:
-            old_index = self.selected_option
-            self.selected_option += 1
-            self._update_selection_visual(old_index, self.selected_option)
-
-    def key_up(self) -> None:
-        """Move selection up."""
-        self.action_prev_option()
-
-    def key_down(self) -> None:
-        """Move selection down."""
-        self.action_next_option()
 
     def on_key(self, event) -> None:
         """Handle key presses for letter navigation."""
@@ -910,12 +875,34 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             if self._handle_key_for_letter_jump(event.key):
                 event.prevent_default()
 
-    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
-        """Handle mouse click on a list item."""
-        if 0 <= event.index < len(self.current_options):
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        """Handle option highlight change (keyboard navigation)."""
+        import datetime
+        log_file = "/tmp/dnd_scroll_debug.log"
+
+        if event.option_list.id == "options-list":
+            new_index = event.option_index
             old_index = self.selected_option
-            self.selected_option = event.index
-            self._update_selection_visual(old_index, self.selected_option)
+
+            # Ignore spurious highlight events that try to reset to 0
+            # These happen when OptionList rebuilds and auto-highlights first item
+            if new_index == 0 and old_index != 0 and self._expected_highlight != 0:
+                with open(log_file, "a") as f:
+                    f.write(f"{datetime.datetime.now()} highlighted: IGNORED spurious 0 (was {old_index}, expected {self._expected_highlight})\n")
+                return
+
+            self.selected_option = new_index
+            self._expected_highlight = new_index  # Update expected for future events
+            self._refresh_details()
+
+            with open(log_file, "a") as f:
+                f.write(f"{datetime.datetime.now()} highlighted: {old_index}→{self.selected_option}\n")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Handle option selection (Enter key or click)."""
+        if event.option_list.id == "options-list":
+            self.selected_option = event.option_index
+            self.action_next()  # Proceed to next step
 
     def action_cancel(self) -> None:
         """Cancel character creation - draft is auto-saved for resume."""

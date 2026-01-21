@@ -684,19 +684,10 @@ Footer {
     margin: 1 0;
 }
 
+/* OptionList styling for character creation */
 .options-list {
     height: 1fr;
-    max-height: 20;
-    padding: 1;
-    overflow-y: auto;
+    max-height: 100%;
 }
 
-.option-item {
-    padding: 0 1;
-}
-
-.option-item.selected {
-    background: $primary-darken-2;
-    color: $primary;
-    text-style: bold;
-}
+/* OptionList uses its own internal styling for highlighted items */
