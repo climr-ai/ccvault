@@ -31,6 +31,17 @@ from dnd_manager.data import (
 from dnd_manager.data.backgrounds import get_origin_feat_for_background
 
 
+# Ability Score Constants
+STANDARD_ARRAY = [15, 14, 13, 12, 10, 8]
+POINT_BUY_COSTS = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9}
+POINT_BUY_TOTAL = 27
+POINT_BUY_MIN = 8
+POINT_BUY_MAX = 15
+ABILITIES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
+ABILITY_ABBREV = {"strength": "STR", "dexterity": "DEX", "constitution": "CON",
+                  "intelligence": "INT", "wisdom": "WIS", "charisma": "CHA"}
+
+
 class ClickableListItem(Static):
     """A clickable list item that emits a message when clicked."""
 
@@ -218,6 +229,17 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         self.selected_option = 0
         self._draft_store = None
         self._expected_highlight = 0  # Track expected highlight to ignore spurious events
+
+        # Ability step state
+        self.ability_sub_step = "method_select"  # method_select | generate | assign | bonuses
+        self.ability_method = "standard_array"   # standard_array | point_buy | roll
+        self.base_scores = list(STANDARD_ARRAY)  # Generated/configured scores
+        self.roll_results: list[dict] = []       # For roll method: [{rolls, total}, ...]
+        self.point_buy_scores = {a: 8 for a in ABILITIES}  # For point buy
+        self.score_assignments: dict[str, int | None] = {a: None for a in ABILITIES}  # ability -> score index
+        self.bonus_plus_2: str | None = None     # For 2024: ability name for +2
+        self.bonus_plus_1: str | None = None     # For 2024: ability name for +1
+        self.ability_selected_index = 0          # Current selection in ability lists
 
     @property
     def draft_store(self):
@@ -411,14 +433,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             self._refresh_options()
 
         elif step_name == "abilities":
-            title.update("ABILITY SCORES")
-            description.update("Using Standard Array: 15, 14, 13, 12, 10, 8 (assigned automatically)")
-            options_list.remove_children()
-            options_list.mount(Static("  STR: 15  DEX: 14  CON: 13"))
-            options_list.mount(Static("  INT: 12  WIS: 10  CHA: 8"))
-            options_list.mount(Static(""))
-            options_list.mount(Static("  (You can adjust these after creation)"))
-            options_list.display = True
+            self._show_ability_substep()
 
         elif step_name == "confirm":
             title.update("CONFIRM CHARACTER")
@@ -434,6 +449,33 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             options_list.mount(Static(f"  Background: {self.char_data['background']}"))
             if self.char_data.get('origin_feat'):
                 options_list.mount(Static(f"  Origin Feat: {self.char_data['origin_feat']}"))
+
+            # Show ability scores
+            options_list.mount(Static(""))
+            ruleset = self.char_data.get("ruleset", "dnd2024")
+            bonuses = {}
+            if ruleset == "dnd2014":
+                bonuses = self._get_racial_bonuses()
+            elif ruleset == "dnd2024":
+                if self.bonus_plus_2:
+                    bonuses[self.bonus_plus_2.lower()] = 2
+                if self.bonus_plus_1:
+                    bonuses[self.bonus_plus_1.lower()] = 1
+
+            scores_parts = []
+            for ability in ABILITIES:
+                idx = self.score_assignments.get(ability)
+                if idx is not None and idx < len(self.base_scores):
+                    base = self.base_scores[idx]
+                    bonus = bonuses.get(ability, 0)
+                    total = base + bonus
+                    abbrev = ABILITY_ABBREV[ability]
+                    if bonus > 0:
+                        scores_parts.append(f"{abbrev}:{total}(+{bonus})")
+                    else:
+                        scores_parts.append(f"{abbrev}:{total}")
+            options_list.mount(Static(f"  Abilities: {' '.join(scores_parts)}"))
+
             options_list.mount(Static(""))
             options_list.mount(Static("  Press 'Create Character' to finish"))
             options_list.display = True
@@ -739,6 +781,449 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
         content.update("\n".join(lines))
 
+    # =========================================================================
+    # ABILITY SCORE SUB-STEP METHODS
+    # =========================================================================
+
+    def _show_ability_substep(self) -> None:
+        """Display the current ability configuration sub-step."""
+        if self.ability_sub_step == "method_select":
+            self._show_ability_method_select()
+        elif self.ability_sub_step == "generate":
+            self._show_ability_generate()
+        elif self.ability_sub_step == "assign":
+            self._show_ability_assign()
+        elif self.ability_sub_step == "bonuses":
+            self._show_ability_bonuses()
+
+    def _show_ability_method_select(self) -> None:
+        """Display method selection for ability score generation."""
+        title = self.query_one("#step-title", Static)
+        options_list = self.query_one("#options-list", OptionList)
+        description = self.query_one("#step-description", Static)
+        detail_panel = self.query_one("#detail-panel", VerticalScroll)
+
+        title.update("ABILITY SCORES - Choose Method")
+        description.update("Select how to generate your ability scores")
+        detail_panel.display = False
+
+        self.current_options = [
+            "Standard Array (15, 14, 13, 12, 10, 8)",
+            "Point Buy (27 points)",
+            "Roll (4d6 drop lowest)",
+        ]
+        # Map current method to index
+        method_to_index = {"standard_array": 0, "point_buy": 1, "roll": 2}
+        self.selected_option = method_to_index.get(self.ability_method, 0)
+        self._refresh_options()
+        options_list.display = True
+
+    def _show_ability_generate(self) -> None:
+        """Display score generation based on selected method."""
+        if self.ability_method == "standard_array":
+            self._show_generate_standard_array()
+        elif self.ability_method == "point_buy":
+            self._show_generate_point_buy()
+        elif self.ability_method == "roll":
+            self._show_generate_roll()
+
+    def _show_generate_standard_array(self) -> None:
+        """Display Standard Array scores."""
+        title = self.query_one("#step-title", Static)
+        options_list = self.query_one("#options-list", OptionList)
+        description = self.query_one("#step-description", Static)
+        detail_panel = self.query_one("#detail-panel", VerticalScroll)
+
+        title.update("ABILITY SCORES - Standard Array")
+        self.base_scores = list(STANDARD_ARRAY)
+
+        # Show the scores
+        scores_display = "  ".join(str(s) for s in self.base_scores)
+        description.update(f"Your scores to assign:\n\n  {scores_display}\n\nPress Next to assign scores to abilities.")
+
+        options_list.display = False
+        detail_panel.display = False
+
+    def _show_generate_point_buy(self) -> None:
+        """Display Point Buy interface."""
+        title = self.query_one("#step-title", Static)
+        options_list = self.query_one("#options-list", OptionList)
+        description = self.query_one("#step-description", Static)
+        detail_panel = self.query_one("#detail-panel", VerticalScroll)
+
+        remaining = self._calculate_point_buy_remaining()
+        title.update(f"ABILITY SCORES - Point Buy ({remaining}/{POINT_BUY_TOTAL} points)")
+
+        # Build display of current scores
+        lines = ["Use ←→ to adjust selected ability (8-15)", ""]
+        for i, ability in enumerate(ABILITIES):
+            score = self.point_buy_scores[ability]
+            cost = POINT_BUY_COSTS.get(score, 0)
+            abbrev = ABILITY_ABBREV[ability]
+            marker = "▶" if i == self.ability_selected_index else " "
+            lines.append(f"{marker} {abbrev}: {score:2d}  (cost: {cost})")
+
+        description.update("\n".join(lines))
+        options_list.display = False
+        detail_panel.display = False
+
+    def _show_generate_roll(self) -> None:
+        """Display rolling interface."""
+        title = self.query_one("#step-title", Static)
+        options_list = self.query_one("#options-list", OptionList)
+        description = self.query_one("#step-description", Static)
+        detail_panel = self.query_one("#detail-panel", VerticalScroll)
+
+        title.update("ABILITY SCORES - Roll 4d6 Drop Lowest")
+
+        lines = ["[R] Roll next  [A] Roll all  [C] Clear all", ""]
+
+        for i in range(6):
+            if i < len(self.roll_results):
+                result = self.roll_results[i]
+                rolls_str = ", ".join(str(r) for r in result["rolls"])
+                lines.append(f"Roll {i+1}: [{rolls_str}] → {result['total']}")
+            else:
+                lines.append(f"Roll {i+1}: --")
+
+        if len(self.roll_results) == 6:
+            lines.append("")
+            self.base_scores = [r["total"] for r in self.roll_results]
+            lines.append(f"Scores: {', '.join(str(s) for s in self.base_scores)}")
+
+        description.update("\n".join(lines))
+        options_list.display = False
+        detail_panel.display = False
+
+    def _show_ability_assign(self) -> None:
+        """Display score assignment interface."""
+        title = self.query_one("#step-title", Static)
+        options_list = self.query_one("#options-list", OptionList)
+        description = self.query_one("#step-description", Static)
+        detail_panel = self.query_one("#detail-panel", VerticalScroll)
+
+        title.update("ABILITY SCORES - Assign Scores")
+
+        # Show available scores with assignment status
+        assigned_indices = set(v for v in self.score_assignments.values() if v is not None)
+        scores_display = []
+        for i, score in enumerate(self.base_scores):
+            if i in assigned_indices:
+                scores_display.append(f"[{score}]")  # Assigned
+            else:
+                scores_display.append(f" {score} ")  # Available
+        scores_line = " ".join(scores_display)
+
+        lines = [f"Scores: {scores_line}", "", "Use ←→ to cycle scores, Enter to confirm assignment", ""]
+
+        for i, ability in enumerate(ABILITIES):
+            abbrev = ABILITY_ABBREV[ability]
+            assigned_idx = self.score_assignments[ability]
+            marker = "▶" if i == self.ability_selected_index else " "
+
+            if assigned_idx is not None:
+                score = self.base_scores[assigned_idx]
+                modifier = (score - 10) // 2
+                mod_str = f"+{modifier}" if modifier >= 0 else str(modifier)
+                lines.append(f"{marker} {abbrev}: {score:2d} ({mod_str})")
+            else:
+                lines.append(f"{marker} {abbrev}: --")
+
+        description.update("\n".join(lines))
+        options_list.display = False
+        detail_panel.display = False
+
+    def _show_ability_bonuses(self) -> None:
+        """Display bonus application based on ruleset."""
+        ruleset = self.char_data.get("ruleset", "dnd2024")
+
+        if ruleset == "dnd2014":
+            self._show_bonuses_2014()
+        elif ruleset == "dnd2024":
+            self._show_bonuses_2024()
+        else:  # ToV
+            self._show_bonuses_tov()
+
+    def _show_bonuses_2014(self) -> None:
+        """Display fixed racial bonuses for 2014 rules."""
+        title = self.query_one("#step-title", Static)
+        description = self.query_one("#step-description", Static)
+        options_list = self.query_one("#options-list", OptionList)
+        detail_panel = self.query_one("#detail-panel", VerticalScroll)
+
+        title.update("ABILITY SCORES - Racial Bonuses")
+
+        # Get racial bonuses
+        bonuses = self._get_racial_bonuses()
+        species_name = self.char_data.get("species", "")
+        subspecies_name = self.char_data.get("subspecies")
+
+        lines = []
+        if bonuses:
+            source = subspecies_name if subspecies_name else species_name
+            lines.append(f"Your {source} grants:")
+            for ability, bonus in bonuses.items():
+                sign = "+" if bonus > 0 else ""
+                lines.append(f"  {sign}{bonus} {ability.title()}")
+            lines.append("")
+
+        lines.append("Final Scores:")
+        for ability in ABILITIES:
+            assigned_idx = self.score_assignments[ability]
+            if assigned_idx is not None:
+                base = self.base_scores[assigned_idx]
+                bonus = bonuses.get(ability, 0)
+                total = base + bonus
+                modifier = (total - 10) // 2
+                mod_str = f"+{modifier}" if modifier >= 0 else str(modifier)
+                bonus_str = f" (+{bonus})" if bonus > 0 else ""
+                lines.append(f"  {ABILITY_ABBREV[ability]}: {total}{bonus_str} ({mod_str})")
+
+        description.update("\n".join(lines))
+        options_list.display = False
+        detail_panel.display = False
+
+    def _show_bonuses_2024(self) -> None:
+        """Display bonus selection for 2024 rules (background provides +2/+1 choice)."""
+        title = self.query_one("#step-title", Static)
+        description = self.query_one("#step-description", Static)
+        options_list = self.query_one("#options-list", OptionList)
+        detail_panel = self.query_one("#detail-panel", VerticalScroll)
+
+        title.update("ABILITY SCORES - Background Bonuses")
+
+        background_name = self.char_data.get("background", "")
+        options = self._get_background_bonus_options()
+
+        if not options:
+            # Default to all abilities if no specific options
+            options = [a.title() for a in ABILITIES]
+
+        lines = [f"Your background ({background_name}) allows:", "  +2 to one ability, +1 to another", ""]
+
+        # Show selection state
+        if self.ability_selected_index == 0:
+            lines.append("Select +2 bonus:")
+        else:
+            lines.append(f"+2 bonus: {self.bonus_plus_2 or '--'}")
+            lines.append("")
+            lines.append("Select +1 bonus:")
+
+        # Use OptionList for selection
+        if self.ability_selected_index == 0:
+            # Selecting +2
+            self.current_options = options
+        else:
+            # Selecting +1 (exclude the +2 choice)
+            self.current_options = [o for o in options if o != self.bonus_plus_2]
+
+        description.update("\n".join(lines))
+        self._refresh_options()
+        options_list.display = True
+        detail_panel.display = False
+
+    def _show_bonuses_tov(self) -> None:
+        """Display final scores for ToV (no bonuses)."""
+        title = self.query_one("#step-title", Static)
+        description = self.query_one("#step-description", Static)
+        options_list = self.query_one("#options-list", OptionList)
+        detail_panel = self.query_one("#detail-panel", VerticalScroll)
+
+        title.update("ABILITY SCORES - Final Review")
+
+        lines = ["Tales of the Valiant uses base scores only.", "No racial or background bonuses apply.", ""]
+        lines.append("Final Scores:")
+
+        for ability in ABILITIES:
+            assigned_idx = self.score_assignments[ability]
+            if assigned_idx is not None:
+                score = self.base_scores[assigned_idx]
+                modifier = (score - 10) // 2
+                mod_str = f"+{modifier}" if modifier >= 0 else str(modifier)
+                lines.append(f"  {ABILITY_ABBREV[ability]}: {score} ({mod_str})")
+
+        description.update("\n".join(lines))
+        options_list.display = False
+        detail_panel.display = False
+
+    # Ability step helper methods
+
+    def _calculate_point_buy_remaining(self) -> int:
+        """Calculate remaining points for Point Buy."""
+        spent = sum(POINT_BUY_COSTS.get(s, 0) for s in self.point_buy_scores.values())
+        return POINT_BUY_TOTAL - spent
+
+    def _adjust_point_buy(self, delta: int) -> None:
+        """Adjust the selected ability score in Point Buy."""
+        ability = ABILITIES[self.ability_selected_index]
+        current = self.point_buy_scores[ability]
+        new_score = current + delta
+
+        # Check bounds
+        if new_score < POINT_BUY_MIN or new_score > POINT_BUY_MAX:
+            return
+
+        # Check if we have enough points
+        old_cost = POINT_BUY_COSTS.get(current, 0)
+        new_cost = POINT_BUY_COSTS.get(new_score, 0)
+        cost_diff = new_cost - old_cost
+
+        if cost_diff > self._calculate_point_buy_remaining():
+            self.notify("Not enough points!", severity="warning")
+            return
+
+        self.point_buy_scores[ability] = new_score
+        self._show_generate_point_buy()
+
+    def _roll_one_ability(self) -> dict:
+        """Roll 4d6 drop lowest for one ability score."""
+        import random
+        rolls = [random.randint(1, 6) for _ in range(4)]
+        rolls_sorted = sorted(rolls)
+        kept = rolls_sorted[1:]  # Drop lowest
+        total = sum(kept)
+        return {"rolls": rolls, "kept": kept, "total": total}
+
+    def _roll_all_abilities(self) -> None:
+        """Roll all 6 ability scores."""
+        self.roll_results = [self._roll_one_ability() for _ in range(6)]
+        self.base_scores = [r["total"] for r in self.roll_results]
+
+    def _get_racial_bonuses(self) -> dict[str, int]:
+        """Get racial ability bonuses for 2014 rules."""
+        species_name = self.char_data.get("species", "")
+        subspecies_name = self.char_data.get("subspecies")
+
+        bonuses: dict[str, int] = {}
+
+        species = get_species(species_name)
+        if species:
+            for ability, bonus in species.ability_bonuses.items():
+                bonuses[ability.lower()] = bonuses.get(ability.lower(), 0) + bonus
+
+            if subspecies_name:
+                for subrace in species.subraces:
+                    if subrace.name == subspecies_name:
+                        for ability, bonus in subrace.ability_bonuses.items():
+                            bonuses[ability.lower()] = bonuses.get(ability.lower(), 0) + bonus
+                        break
+
+        return bonuses
+
+    def _get_background_bonus_options(self) -> list[str]:
+        """Get ability score bonus options for 2024 background."""
+        background_name = self.char_data.get("background", "")
+        background = get_background(background_name)
+
+        if background and hasattr(background, "ability_score_options") and background.ability_score_options:
+            return background.ability_score_options
+
+        # Default: any three abilities
+        return ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"]
+
+    def _advance_ability_substep(self) -> bool:
+        """Advance to next ability sub-step. Returns True if successful."""
+        if self.ability_sub_step == "method_select":
+            # Save selected method
+            method_map = {0: "standard_array", 1: "point_buy", 2: "roll"}
+            self.ability_method = method_map.get(self.selected_option, "standard_array")
+            self.ability_sub_step = "generate"
+            self.ability_selected_index = 0
+            self._show_ability_substep()
+            return True
+
+        elif self.ability_sub_step == "generate":
+            if self.ability_method == "point_buy":
+                # Set base_scores from point buy
+                self.base_scores = [self.point_buy_scores[a] for a in ABILITIES]
+                # Pre-assign scores since point buy already assigns to abilities
+                for i, ability in enumerate(ABILITIES):
+                    self.score_assignments[ability] = i
+                # Skip assignment, go to bonuses
+                self.ability_sub_step = "bonuses"
+            elif self.ability_method == "roll":
+                if len(self.roll_results) < 6:
+                    self.notify("Roll all 6 ability scores first!", severity="warning")
+                    return False
+                self.ability_sub_step = "assign"
+            else:  # standard_array
+                self.ability_sub_step = "assign"
+
+            self.ability_selected_index = 0
+            self._show_ability_substep()
+            return True
+
+        elif self.ability_sub_step == "assign":
+            # Validate all abilities are assigned
+            unassigned = [a for a, v in self.score_assignments.items() if v is None]
+            if unassigned:
+                self.notify(f"Assign scores to: {', '.join(ABILITY_ABBREV[a] for a in unassigned)}", severity="warning")
+                return False
+            self.ability_sub_step = "bonuses"
+            self.ability_selected_index = 0
+            self._show_ability_substep()
+            return True
+
+        elif self.ability_sub_step == "bonuses":
+            ruleset = self.char_data.get("ruleset", "dnd2024")
+            if ruleset == "dnd2024":
+                # Validate bonus selection
+                if self.ability_selected_index == 0:
+                    # Selecting +2 - save and move to +1
+                    if self.current_options and self.selected_option < len(self.current_options):
+                        self.bonus_plus_2 = self.current_options[self.selected_option]
+                        self.ability_selected_index = 1
+                        self.selected_option = 0
+                        self._show_ability_substep()
+                        return True
+                    return False
+                else:
+                    # Selecting +1 - save and finish
+                    if self.current_options and self.selected_option < len(self.current_options):
+                        self.bonus_plus_1 = self.current_options[self.selected_option]
+                    else:
+                        return False
+
+            # Done with abilities
+            self.ability_sub_step = None  # Signal completion
+            return True
+
+        return False
+
+    def _go_back_ability_substep(self) -> bool:
+        """Go back to previous ability sub-step. Returns True if handled within abilities."""
+        if self.ability_sub_step == "method_select":
+            return False  # Go to previous wizard step
+
+        elif self.ability_sub_step == "generate":
+            self.ability_sub_step = "method_select"
+            self._show_ability_substep()
+            return True
+
+        elif self.ability_sub_step == "assign":
+            self.ability_sub_step = "generate"
+            self._show_ability_substep()
+            return True
+
+        elif self.ability_sub_step == "bonuses":
+            ruleset = self.char_data.get("ruleset", "dnd2024")
+            if ruleset == "dnd2024" and self.ability_selected_index == 1:
+                # Go back to +2 selection
+                self.ability_selected_index = 0
+                self.bonus_plus_1 = None
+                self._show_ability_substep()
+                return True
+
+            if self.ability_method == "point_buy":
+                # Point buy skips assign, go back to generate
+                self.ability_sub_step = "generate"
+            else:
+                self.ability_sub_step = "assign"
+            self._show_ability_substep()
+            return True
+
+        return False
+
     # ListNavigationMixin implementation
     @property
     def selected_index(self) -> int:
@@ -791,6 +1276,13 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
     def _go_back(self) -> None:
         """Go to previous step."""
+        step_name = self.steps[self.step] if self.step < len(self.steps) else ""
+
+        # Handle ability sub-step navigation
+        if step_name == "abilities":
+            if self._go_back_ability_substep():
+                return  # Handled within abilities step
+
         if self.step > 0:
             self.step -= 1
             self.selected_option = 0
@@ -837,6 +1329,18 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         elif step_name == "origin_feat":
             if self.current_options:
                 self.char_data["origin_feat"] = self.current_options[self.selected_option]
+        elif step_name == "abilities":
+            # Handle abilities sub-step navigation
+            if not self._advance_ability_substep():
+                return  # Stay on current sub-step
+            if self.ability_sub_step is None:
+                # Finished abilities, move to next step
+                self.ability_sub_step = "method_select"  # Reset for potential re-entry
+                self.step += 1
+                self.selected_option = 0
+                self._show_step()
+                self._save_draft()
+            return
         elif step_name == "confirm":
             self._create_character()
             return
@@ -851,6 +1355,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
     def _create_character(self) -> None:
         """Create the character and go to dashboard."""
         from dnd_manager.data import get_feat
+        from dnd_manager.models.abilities import AbilityScores, AbilityScore
 
         # Create character
         char = Character.create_new(
@@ -860,6 +1365,38 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         char.species = self.char_data["species"]
         char.subspecies = self.char_data.get("subspecies")
         char.background = self.char_data["background"]
+
+        # Set ability scores from wizard data
+        ruleset = self.char_data.get("ruleset", "dnd2024")
+
+        # Get base scores from assignments
+        base_scores = {}
+        for ability in ABILITIES:
+            idx = self.score_assignments.get(ability)
+            if idx is not None and idx < len(self.base_scores):
+                base_scores[ability] = self.base_scores[idx]
+            else:
+                base_scores[ability] = 10  # Default
+
+        # Get bonuses based on ruleset
+        bonuses = {}
+        if ruleset == "dnd2014":
+            bonuses = self._get_racial_bonuses()
+        elif ruleset == "dnd2024":
+            if self.bonus_plus_2:
+                bonuses[self.bonus_plus_2.lower()] = 2
+            if self.bonus_plus_1:
+                bonuses[self.bonus_plus_1.lower()] = 1
+
+        # Create ability scores with bonuses applied
+        char.abilities = AbilityScores(
+            strength=AbilityScore(base=base_scores["strength"], bonus=bonuses.get("strength", 0)),
+            dexterity=AbilityScore(base=base_scores["dexterity"], bonus=bonuses.get("dexterity", 0)),
+            constitution=AbilityScore(base=base_scores["constitution"], bonus=bonuses.get("constitution", 0)),
+            intelligence=AbilityScore(base=base_scores["intelligence"], bonus=bonuses.get("intelligence", 0)),
+            wisdom=AbilityScore(base=base_scores["wisdom"], bonus=bonuses.get("wisdom", 0)),
+            charisma=AbilityScore(base=base_scores["charisma"], bonus=bonuses.get("charisma", 0)),
+        )
 
         # Add species feat if selected (from Variant Human or Human ToV)
         if self.char_data.get("species_feat"):
@@ -917,12 +1454,109 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
 
     def on_key(self, event) -> None:
-        """Handle key presses for letter navigation."""
+        """Handle key presses for navigation and special actions."""
         step_name = self.steps[self.step] if self.step < len(self.steps) else ""
+
+        # Handle ability step special keys
+        if step_name == "abilities":
+            if self._handle_ability_key(event.key):
+                event.prevent_default()
+                return
+
         # Only do letter jump on steps that show options list
         if step_name in ("class", "species", "subspecies", "species_feat", "background", "origin_feat"):
             if self._handle_key_for_letter_jump(event.key):
                 event.prevent_default()
+
+    def _handle_ability_key(self, key: str) -> bool:
+        """Handle special keys for ability step. Returns True if handled."""
+        if self.ability_sub_step == "generate":
+            if self.ability_method == "point_buy":
+                if key == "up":
+                    if self.ability_selected_index > 0:
+                        self.ability_selected_index -= 1
+                        self._show_generate_point_buy()
+                    return True
+                elif key == "down":
+                    if self.ability_selected_index < len(ABILITIES) - 1:
+                        self.ability_selected_index += 1
+                        self._show_generate_point_buy()
+                    return True
+                elif key == "left":
+                    self._adjust_point_buy(-1)
+                    return True
+                elif key == "right":
+                    self._adjust_point_buy(1)
+                    return True
+
+            elif self.ability_method == "roll":
+                if key.lower() == "r":
+                    # Roll next
+                    if len(self.roll_results) < 6:
+                        self.roll_results.append(self._roll_one_ability())
+                        self._show_generate_roll()
+                    return True
+                elif key.lower() == "a":
+                    # Roll all
+                    self._roll_all_abilities()
+                    self._show_generate_roll()
+                    return True
+                elif key.lower() == "c":
+                    # Clear all
+                    self.roll_results = []
+                    self._show_generate_roll()
+                    return True
+
+        elif self.ability_sub_step == "assign":
+            if key == "up":
+                if self.ability_selected_index > 0:
+                    self.ability_selected_index -= 1
+                    self._show_ability_assign()
+                return True
+            elif key == "down":
+                if self.ability_selected_index < len(ABILITIES) - 1:
+                    self.ability_selected_index += 1
+                    self._show_ability_assign()
+                return True
+            elif key in ("left", "right"):
+                # Cycle through available scores for current ability
+                self._cycle_assignment(1 if key == "right" else -1)
+                return True
+            elif key.lower() == "c":
+                # Clear assignment
+                ability = ABILITIES[self.ability_selected_index]
+                self.score_assignments[ability] = None
+                self._show_ability_assign()
+                return True
+
+        return False
+
+    def _cycle_assignment(self, direction: int) -> None:
+        """Cycle through available scores for the selected ability."""
+        ability = ABILITIES[self.ability_selected_index]
+        current_idx = self.score_assignments[ability]
+
+        # Find available score indices (not assigned to other abilities)
+        assigned_indices = {v for k, v in self.score_assignments.items() if v is not None and k != ability}
+        available = [i for i in range(len(self.base_scores)) if i not in assigned_indices]
+
+        if not available:
+            return
+
+        if current_idx is None:
+            # Assign first/last available
+            new_idx = available[0] if direction > 0 else available[-1]
+        else:
+            # Find current position in available and cycle
+            if current_idx in available:
+                pos = available.index(current_idx)
+                new_pos = (pos + direction) % len(available)
+                new_idx = available[new_pos]
+            else:
+                new_idx = available[0] if direction > 0 else available[-1]
+
+        self.score_assignments[ability] = new_idx
+        self._show_ability_assign()
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         """Handle option highlight change (keyboard navigation)."""
