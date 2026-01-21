@@ -64,9 +64,7 @@ class ListNavigationMixin:
     def _scroll_to_selection(self) -> None:
         """Scroll to keep the selected item CENTERED in the viewport.
 
-        The selection stays in the middle of the visible area while the list
-        scrolls around it. Only at the edges of the list does the highlight
-        move away from center.
+        Uses Textual's built-in scroll_to_center() method.
         """
         container = self._get_scroll_container()
         if container is None:
@@ -77,30 +75,14 @@ class ListNavigationMixin:
             return
 
         try:
-            # Each item is typically 1 row high in terminal
-            item_height = 1
-            total_items = len(items)
+            # Find the selected widget
+            item_class = self._get_item_widget_class()
+            widgets = list(container.query(f".{item_class}")) if item_class else list(container.children)
 
-            # Calculate where the selected item is in the content
-            # (index * height gives position from top of content)
-            item_position = self.selected_index * item_height
-
-            # Get viewport height
-            viewport_height = container.size.height
-
-            # Calculate scroll position to center the selected item
-            # We want: item_position - scroll_y = viewport_height / 2
-            # So: scroll_y = item_position - viewport_height / 2
-            target_scroll = item_position - (viewport_height // 2)
-
-            # Clamp to valid scroll range
-            total_content_height = total_items * item_height
-            max_scroll = max(0, total_content_height - viewport_height)
-            target_scroll = max(0, min(target_scroll, max_scroll))
-
-            # Set scroll position
-            container.scroll_y = target_scroll
-
+            if self.selected_index < len(widgets):
+                selected_widget = widgets[self.selected_index]
+                # Use Textual's built-in centering
+                container.scroll_to_center(selected_widget, animate=False)
         except Exception:
             pass
 
