@@ -260,9 +260,9 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         active = []
         for step in self.all_steps:
             if step == "subspecies":
-                # Skip if selected species has no subraces
-                subraces = get_subraces(self.char_data.get("species", ""))
-                if not subraces:
+                # Skip if selected species has no subspecies
+                subspecies_list = get_subraces(self.char_data.get("species", ""))
+                if not subspecies_list:
                     continue
             elif step == "species_feat":
                 # Skip if species/subspecies doesn't grant a feat choice
@@ -334,7 +334,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             "name": "Name",
             "class": "Class",
             "species": "Species",
-            "subspecies": "Subrace",
+            "subspecies": "Subspecies",
             "species_feat": "Bonus Feat",
             "background": "Background",
             "origin_feat": "Origin Feat",
@@ -402,7 +402,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             species = get_species(species_name)
             if species:
                 description.update(f"Select your {species_name}'s subspecies or heritage")
-                self.current_options = [sr.name for sr in species.subraces]
+                self.current_options = [sr.name for sr in species.subspecies]
             else:
                 self.current_options = []
             self._refresh_options()
@@ -678,41 +678,41 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 lines.append(f"  • {trait.name}")
                 lines.append(f"    {trait.description}")
 
-        if species.subraces:
+        if species.subspecies:
             lines.append("")
-            lines.append(f"Subraces: {', '.join(sr.name for sr in species.subraces)}")
+            lines.append(f"Subspecies: {', '.join(sr.name for sr in species.subspecies)}")
 
         content.update("\n".join(lines))
 
-    def _show_subspecies_details(self, subrace_name: str, title: Static, content: Static) -> None:
+    def _show_subspecies_details(self, subspecies_name: str, title: Static, content: Static) -> None:
         """Show details for a subspecies."""
         species_name = self.char_data.get("species", "")
         species = get_species(species_name)
         if not species:
-            title.update(subrace_name)
+            title.update(subspecies_name)
             content.update("No details available")
             return
 
-        subrace = next((sr for sr in species.subraces if sr.name == subrace_name), None)
-        if not subrace:
-            title.update(subrace_name)
+        subsp = next((sr for sr in species.subspecies if sr.name == subspecies_name), None)
+        if not subsp:
+            title.update(subspecies_name)
             content.update("No details available")
             return
 
-        title.update(f"🧬 {subrace_name}")
+        title.update(f"🧬 {subspecies_name}")
 
         lines = []
-        lines.append(subrace.description)
+        lines.append(subsp.description)
 
-        if subrace.ability_bonuses:
+        if subsp.ability_bonuses:
             lines.append("")
-            bonuses = [f"+{v} {k}" for k, v in subrace.ability_bonuses.items()]
+            bonuses = [f"+{v} {k}" for k, v in subsp.ability_bonuses.items()]
             lines.append(f"Ability Bonuses: {', '.join(bonuses)}")
 
-        if subrace.traits:
+        if subsp.traits:
             lines.append("")
-            lines.append("SUBRACE TRAITS")
-            for trait in subrace.traits:
+            lines.append("SUBSPECIES TRAITS")
+            for trait in subsp.traits:
                 lines.append(f"  • {trait.name}")
                 lines.append(f"    {trait.description}")
 
@@ -1105,9 +1105,9 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 bonuses[ability.lower()] = bonuses.get(ability.lower(), 0) + bonus
 
             if subspecies_name:
-                for subrace in species.subraces:
-                    if subrace.name == subspecies_name:
-                        for ability, bonus in subrace.ability_bonuses.items():
+                for subsp in species.subspecies:
+                    if subsp.name == subspecies_name:
+                        for ability, bonus in subsp.ability_bonuses.items():
                             bonuses[ability.lower()] = bonuses.get(ability.lower(), 0) + bonus
                         break
 
@@ -1435,11 +1435,11 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                     source="racial",
                     description=trait.description,
                 ))
-            # Add subrace traits if applicable
+            # Add subspecies traits if applicable
             if self.char_data.get("subspecies"):
-                for subrace in species.subraces:
-                    if subrace.name == self.char_data["subspecies"]:
-                        for trait in subrace.traits:
+                for subsp in species.subspecies:
+                    if subsp.name == self.char_data["subspecies"]:
+                        for trait in subsp.traits:
                             char.features.append(Feature(
                                 name=trait.name,
                                 source="racial",

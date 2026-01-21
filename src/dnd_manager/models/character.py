@@ -519,7 +519,7 @@ class Character(BaseModel):
 
     # Species/Race/Lineage (terminology varies by ruleset)
     species: Optional[str] = Field(default=None)
-    subspecies: Optional[str] = Field(default=None)  # Subrace, heritage, etc.
+    subspecies: Optional[str] = Field(default=None)  # Subspecies, heritage, etc.
     background: Optional[str] = Field(default=None)
     alignment: Alignment = Field(default=Alignment.TRUE_NEUTRAL)
 
@@ -689,7 +689,7 @@ class Character(BaseModel):
         return "Species"
 
     def get_subspecies_term(self) -> str:
-        """Get the terminology for subspecies/subrace/heritage based on ruleset."""
+        """Get the terminology for subspecies/heritage based on ruleset."""
         ruleset = self.get_ruleset()
         if ruleset:
             return ruleset.subspecies_term

@@ -124,7 +124,7 @@ from dnd_manager.data.library import (
 
 from dnd_manager.data.species import (
     RacialTrait,
-    Subrace,
+    Subspecies,
     Heritage,
     Species,
     ALL_SPECIES,
@@ -134,6 +134,7 @@ from dnd_manager.data.species import (
     get_species,
     get_all_species_names,
     get_subraces,
+    get_subspecies,
     search_species,
     get_species_for_ruleset,
     get_tov_lineages,
@@ -141,7 +142,7 @@ from dnd_manager.data.species import (
     # Level-gated trait functions
     get_trait_min_level,
     get_species_traits_at_level,
-    get_subrace_traits_at_level,
+    get_subspecies_traits_at_level,
     get_all_traits_at_level,
     # Species feat check
     species_grants_feat,
@@ -358,7 +359,7 @@ __all__ = [
     "get_homebrew_library",
     # Species
     "RacialTrait",
-    "Subrace",
+    "Subspecies",
     "Heritage",
     "Species",
     "ALL_SPECIES",
@@ -368,13 +369,14 @@ __all__ = [
     "get_species",
     "get_all_species_names",
     "get_subraces",
+    "get_subspecies",
     "search_species",
     "get_species_for_ruleset",
     "get_tov_lineages",
     "get_tov_heritages",
     "get_trait_min_level",
     "get_species_traits_at_level",
-    "get_subrace_traits_at_level",
+    "get_subspecies_traits_at_level",
     "get_all_traits_at_level",
     "species_grants_feat",
     # Feats

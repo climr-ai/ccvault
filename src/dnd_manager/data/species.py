@@ -27,8 +27,8 @@ class RacialTrait:
 
 
 @dataclass
-class Subrace:
-    """A subrace/subspecies variant."""
+class Subspecies:
+    """A subspecies variant (subrace in 2014 terminology)."""
     name: str
     description: str
     ability_bonuses: dict[str, int] = field(default_factory=dict)
@@ -56,7 +56,7 @@ class Species:
     languages: list[str]
     traits: list[RacialTrait] = field(default_factory=list)
     darkvision: int = 0  # Range in feet, 0 if none
-    subraces: list[Subrace] = field(default_factory=list)
+    subspecies: list[Subspecies] = field(default_factory=list)
     age_info: str = ""
     alignment_tendency: str = ""
     # Ruleset support
@@ -108,8 +108,8 @@ DWARF = Species(
             description="Whenever you make an Intelligence (History) check related to the origin of stonework, you are considered proficient in the History skill and add double your proficiency bonus to the check.",
         ),
     ],
-    subraces=[
-        Subrace(
+    subspecies=[
+        Subspecies(
             name="Hill Dwarf",
             description="Hill dwarves possess keen senses and remarkable resilience, honed by generations living in the hills and valleys.",
             ability_bonuses={"Wisdom": 1},
@@ -120,7 +120,7 @@ DWARF = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Mountain Dwarf",
             description="Mountain dwarves are strong and hardy, accustomed to difficult terrain and the weight of heavy armor.",
             ability_bonuses={"Strength": 2},
@@ -166,8 +166,8 @@ ELF = Species(
             description="Elves don't need to sleep. Instead, they meditate deeply for 4 hours a day, gaining the same benefit that a human does from 8 hours of sleep.",
         ),
     ],
-    subraces=[
-        Subrace(
+    subspecies=[
+        Subspecies(
             name="High Elf",
             description="High elves have a keen mind and mastery of basic magic, reflecting their heritage of arcane study.",
             ability_bonuses={"Intelligence": 1},
@@ -186,7 +186,7 @@ ELF = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Wood Elf",
             description="Wood elves are swift and stealthy, at home in the deep forests where they have lived for millennia.",
             ability_bonuses={"Wisdom": 1},
@@ -205,7 +205,7 @@ ELF = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Drow",
             description="Descended from elves who retreated to the Underdark, drow have adapted to life in eternal darkness.",
             ability_bonuses={"Charisma": 1},
@@ -264,8 +264,8 @@ HALFLING = Species(
             description="You can move through the space of any creature that is of a size larger than yours.",
         ),
     ],
-    subraces=[
-        Subrace(
+    subspecies=[
+        Subspecies(
             name="Lightfoot",
             description="Lightfoot halflings are naturally stealthy and sociable, blending into crowds with ease.",
             ability_bonuses={"Charisma": 1},
@@ -276,7 +276,7 @@ HALFLING = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Stout",
             description="Stout halflings are hardier than their cousins, rumored to have dwarven blood in their ancestry.",
             ability_bonuses={"Constitution": 1},
@@ -321,8 +321,8 @@ HUMAN = Species(
             description="You can speak, read, and write one extra language of your choice.",
         ),
     ],
-    subraces=[
-        Subrace(
+    subspecies=[
+        Subspecies(
             name="Variant Human",
             description="Some humans display exceptional talent in specific areas, trading broad ability for focused expertise.",
             ability_bonuses={},  # +1 to two different abilities of choice
@@ -387,7 +387,7 @@ DRAGONBORN = Species(
             description="You have resistance to the damage type associated with your draconic ancestry.",
         ),
     ],
-    subraces=[],  # Ancestry is chosen but doesn't constitute a subrace mechanically
+    subspecies=[],  # Ancestry is chosen but doesn't constitute a subspecies mechanically
 )
 
 # =============================================================================
@@ -415,8 +415,8 @@ GNOME = Species(
             description="You have advantage on all Intelligence, Wisdom, and Charisma saving throws against magic.",
         ),
     ],
-    subraces=[
-        Subrace(
+    subspecies=[
+        Subspecies(
             name="Forest Gnome",
             description="Forest gnomes have a natural knack for illusion and communication with small animals.",
             ability_bonuses={"Dexterity": 1},
@@ -431,7 +431,7 @@ GNOME = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Rock Gnome",
             description="Rock gnomes are natural tinkerers with an affinity for mechanical devices.",
             ability_bonuses={"Constitution": 1},
@@ -485,7 +485,7 @@ HALF_ELF = Species(
             description="You can speak, read, and write one extra language of your choice.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -520,7 +520,7 @@ HALF_ORC = Species(
             description="When you score a critical hit with a melee weapon attack, you can roll one of the weapon's damage dice one additional time and add it to the extra damage of the critical hit.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -555,7 +555,7 @@ TIEFLING = Species(
             ),
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 
@@ -591,8 +591,8 @@ AASIMAR = Species(
             description="You know the light cantrip. Charisma is your spellcasting ability for it.",
         ),
     ],
-    subraces=[
-        Subrace(
+    subspecies=[
+        Subspecies(
             name="Protector Aasimar",
             description="Protector aasimar are charged by celestial powers to guard the weak and strike against evil.",
             ability_bonuses={"Wisdom": 1},
@@ -603,7 +603,7 @@ AASIMAR = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Scourge Aasimar",
             description="Scourge aasimar are imbued with a divine energy that blazes intensely within them.",
             ability_bonuses={"Constitution": 1},
@@ -614,7 +614,7 @@ AASIMAR = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Fallen Aasimar",
             description="Fallen aasimar are touched by dark powers in their youth or have turned to evil of their own accord.",
             ability_bonuses={"Strength": 1},
@@ -664,7 +664,7 @@ GOLIATH = Species(
             description="You have resistance to cold damage and are acclimated to high altitude, including elevations above 20,000 feet.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -703,7 +703,7 @@ TABAXI = Species(
             description="You can speak, read, and write one language of your choice.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -742,7 +742,7 @@ FIRBOLG = Species(
             description="You can communicate simple ideas to beasts and plants. You have advantage on Charisma checks to influence them.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -777,7 +777,7 @@ KENKU = Species(
             description="You can mimic sounds you have heard, including voices. A creature that hears the sounds can tell they are imitations with a successful Wisdom (Insight) check opposed by your Charisma (Deception) check.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -824,7 +824,7 @@ LIZARDFOLK = Species(
             description="As a bonus action, you can make a bite attack. If it hits, you gain temporary hit points equal to your Constitution modifier (minimum 1). You can use this once per short or long rest.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -855,7 +855,7 @@ GOBLIN = Species(
             description="You can take the Disengage or Hide action as a bonus action on each of your turns.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -886,7 +886,7 @@ HOBGOBLIN = Species(
             description="If you miss with an attack roll or fail an ability check or saving throw, you can gain a bonus equal to the number of allies you can see within 30 feet (maximum +5). You can use this once per short or long rest.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -925,7 +925,7 @@ BUGBEAR = Species(
             description="If you hit a creature that is surprised, you deal an extra 2d6 damage. You can use this once per combat.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -956,7 +956,7 @@ KOBOLD = Species(
             description="Choose one: proficiency in a skill (Arcana, Investigation, Medicine, Sleight of Hand, or Survival), a sorcerer cantrip, or the ability to make advantage-giving Help actions as a bonus action.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -991,7 +991,7 @@ ORC = Species(
             description="When you are reduced to 0 hit points but not killed outright, you can drop to 1 hit point instead. You can't use this feature again until you finish a long rest.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1030,7 +1030,7 @@ TORTLE = Species(
             description="You can withdraw into your shell as an action. Until you emerge as a bonus action, you gain +4 AC, have advantage on Strength and Constitution saves, but are prone, have speed 0, and have disadvantage on Dexterity saves.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1073,7 +1073,7 @@ TRITON = Species(
             description="You have a swimming speed of 30 feet.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1104,7 +1104,7 @@ AARAKOCRA = Species(
             description="Your talons are natural weapons, dealing 1d4 + Strength modifier slashing damage on unarmed strikes.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1126,8 +1126,8 @@ GENASI = Species(
     age_info="Genasi mature at about the same rate as humans and reach adulthood in their late teens. They live somewhat longer than humans do, up to 120 years.",
     alignment_tendency="Independent and self-reliant, genasi tend toward a neutral alignment.",
     traits=[],
-    subraces=[
-        Subrace(
+    subspecies=[
+        Subspecies(
             name="Air Genasi",
             description="Air genasi carry the essence of elemental air, giving them pale blue skin, light hair, and a breeze that follows them.",
             ability_bonuses={"Dexterity": 1},
@@ -1142,7 +1142,7 @@ GENASI = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Earth Genasi",
             description="Earth genasi are drawn from the elemental earth, with skin like stone and eyes that glimmer like gems.",
             ability_bonuses={"Strength": 1},
@@ -1157,7 +1157,7 @@ GENASI = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Fire Genasi",
             description="Fire genasi carry the heat of flames, with skin tones of deep reds and eyes like molten gold.",
             ability_bonuses={"Intelligence": 1},
@@ -1172,7 +1172,7 @@ GENASI = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Water Genasi",
             description="Water genasi descend from the elemental water, with skin that glistens and hair that flows like waves.",
             ability_bonuses={"Wisdom": 1},
@@ -1230,7 +1230,7 @@ CHANGELING = Species(
             description="You can speak, read, and write two languages of your choice.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1273,7 +1273,7 @@ WARFORGED = Species(
             description="You can speak, read, and write one language of your choice.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1289,7 +1289,7 @@ SHIFTER = Species(
     ),
     size="Medium",
     speed=30,
-    ability_bonuses={},  # Varies by subrace
+    ability_bonuses={},  # Varies by subspecies
     languages=["Common"],
     darkvision=60,
     age_info="Shifters are quick to mature, reaching adulthood at 10 and rarely living past 70.",
@@ -1297,11 +1297,11 @@ SHIFTER = Species(
     traits=[
         RacialTrait(
             name="Shifting",
-            description="As a bonus action, you can shift for 1 minute or until you end it as a bonus action. While shifted, you gain temporary hit points equal to your level + Constitution modifier. You can shift a number of times equal to your proficiency bonus per long rest. Additional benefits depend on your subrace.",
+            description="As a bonus action, you can shift for 1 minute or until you end it as a bonus action. While shifted, you gain temporary hit points equal to your level + Constitution modifier. You can shift a number of times equal to your proficiency bonus per long rest. Additional benefits depend on your subspecies.",
         ),
     ],
-    subraces=[
-        Subrace(
+    subspecies=[
+        Subspecies(
             name="Beasthide",
             description="Beasthide shifters are especially tough, channeling the resilience of a bear or boar.",
             ability_bonuses={"Constitution": 2, "Strength": 1},
@@ -1316,7 +1316,7 @@ SHIFTER = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Longtooth",
             description="Longtooth shifters channel predatory ferocity, growing fearsome fangs.",
             ability_bonuses={"Strength": 2, "Dexterity": 1},
@@ -1331,7 +1331,7 @@ SHIFTER = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Swiftstride",
             description="Swiftstride shifters embody feline grace and speed.",
             ability_bonuses={"Dexterity": 2, "Charisma": 1},
@@ -1346,7 +1346,7 @@ SHIFTER = Species(
                 ),
             ],
         ),
-        Subrace(
+        Subspecies(
             name="Wildhunt",
             description="Wildhunt shifters channel the keen senses of wolves and other trackers.",
             ability_bonuses={"Wisdom": 2, "Dexterity": 1},
@@ -1396,7 +1396,7 @@ YUAN_TI = Species(
             description="You are immune to poison damage and the poisoned condition.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1435,7 +1435,7 @@ CENTAUR = Species(
             description="You count as one size larger when determining your carrying capacity and the weight you can push or drag. In addition, any climb that requires hands and feet is especially difficult for you. When you make such a climb, each foot of movement costs you 4 extra feet instead of the normal 1 extra foot.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1474,7 +1474,7 @@ MINOTAUR = Species(
             description="You can perfectly recall any path you have traveled.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1517,7 +1517,7 @@ SATYR = Species(
             description="You have proficiency in the Performance and Persuasion skills.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1552,7 +1552,7 @@ LEONIN = Species(
             description="As a bonus action, you can let out an especially menacing roar. Creatures of your choice within 10 feet of you that can hear you must succeed on a Wisdom saving throw (DC 8 + proficiency bonus + Constitution modifier) or become frightened of you until the end of your next turn. Once you use this trait, you can't use it again until you finish a short or long rest.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1595,7 +1595,7 @@ LOXODON = Species(
             description="Thanks to your sensitive trunk, you have advantage on Wisdom (Perception), Wisdom (Survival), and Intelligence (Investigation) checks that involve smell.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1630,7 +1630,7 @@ FAIRY = Species(
             description="You have a flying speed equal to your walking speed. You can't use this flying speed if you're wearing medium or heavy armor.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1669,7 +1669,7 @@ HARENGON = Species(
             description="As a bonus action, you can jump a number of feet equal to five times your proficiency bonus, without provoking opportunity attacks. You can use this trait a number of times equal to your proficiency bonus, regaining all uses when you finish a long rest.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1700,7 +1700,7 @@ OWLIN = Species(
             description="You have proficiency in the Stealth skill.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1739,7 +1739,7 @@ KALASHTAR = Species(
             description="Kalashtar sleep, but they don't connect to the plane of dreams as other creatures do. Instead, their minds draw from the memories of their otherworldly spirit while they sleep. As such, you are immune to spells and other magical effects that require you to dream, like dream, but not to spells and other magical effects that put you to sleep, like sleep.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1774,7 +1774,7 @@ GITHYANKI = Species(
             description="You know the mage hand cantrip, and the hand is invisible. Starting at 3rd level, you can cast jump on yourself once per long rest. Starting at 5th level, you can cast misty step once per long rest. Intelligence is your spellcasting ability for these spells.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1805,7 +1805,7 @@ GITHZERAI = Species(
             description="You know the mage hand cantrip, and the hand is invisible. Starting at 3rd level, you can cast shield once per long rest. Starting at 5th level, you can cast detect thoughts once per long rest. Wisdom is your spellcasting ability for these spells.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1841,7 +1841,7 @@ DEEP_GNOME = Species(
             description="Starting at 3rd level, you can cast disguise self once per long rest. Starting at 5th level, you can cast nondetection on yourself once per long rest without a material component. Intelligence is your spellcasting ability.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1877,7 +1877,7 @@ DUERGAR = Species(
             description="You have disadvantage on attack rolls and Wisdom (Perception) checks that rely on sight when you, the target of your attack, or whatever you are trying to perceive is in direct sunlight.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1920,7 +1920,7 @@ SEA_ELF = Species(
             description="Using gestures and sounds, you can communicate simple ideas with any beast that has an innate swimming speed.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1959,7 +1959,7 @@ ELADRIN = Species(
             description="At the end of each long rest, you can align yourself with one of the four seasons: Autumn (charming effect), Winter (frightening effect), Spring (teleport an ally), or Summer (deal fire damage).",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -1998,7 +1998,7 @@ SHADAR_KAI = Species(
             description="As a bonus action, you can magically teleport up to 30 feet to an unoccupied space you can see. Once you use this trait, you can't do so again until you finish a long rest. Starting at 3rd level, you also become resistant to all damage when you teleport using this trait. The resistance lasts until the start of your next turn.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -2046,7 +2046,7 @@ GRUNG = Species(
             description="If you fail to immerse yourself in water for at least 1 hour during a day, you suffer 1 level of exhaustion at the end of that day.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -2085,7 +2085,7 @@ VERDAN = Species(
             description="You have advantage on all Wisdom and Charisma saving throws.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -2136,7 +2136,7 @@ AUTOGNOME = Species(
             description="You gain two tool proficiencies of your choice.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -2171,7 +2171,7 @@ GIFF = Species(
             description="You have advantage on Strength-based ability checks and Strength saving throws. In addition, you count as one size larger when determining your carrying capacity and the weight you can push, drag, or lift.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -2206,7 +2206,7 @@ HADOZEE = Species(
             description="When you take damage, you can use your reaction to roll a d6. Add your proficiency bonus to the number rolled, and reduce the damage you take by an amount equal to that total (minimum 0). You can use this trait a number of times equal to your proficiency bonus, regaining all uses when you finish a long rest.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -2249,7 +2249,7 @@ PLASMOID = Species(
             description="As an action, you can reshape your body to give yourself a head, one or two arms, one or two legs, and makeshift hands and feet, or you can revert to a limbless blob. While you have a humanlike shape, you can wear clothing and armor made for a Humanoid of your size. As a bonus action, you can extrude a pseudopod that is up to 6 inches wide and 10 feet long or reabsorb it into your body. As part of the same bonus action, you can use this pseudopod to manipulate an object, open or close a door or container, or pick up or set down a Tiny object. The pseudopod can't attack, activate magic items, or carry more than 10 pounds.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -2288,7 +2288,7 @@ THRI_KREEN = Species(
             description="Without the need for a shared language, you can telepathically speak to any creature you can see within 120 feet of you. When you communicate telepathically with a creature, you can allow that creature to telepathically respond to you.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # =============================================================================
@@ -2323,7 +2323,7 @@ TOV_BEASTKIN = Species(
             description="Choose one bestial trait: Claws (1d4 slashing natural weapons), Bite (1d6 piercing natural weapon), Keen Senses (advantage on Perception checks using one sense), or Swift (base speed increases by 5 feet).",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 TOV_DWARF = Species(
@@ -2356,7 +2356,7 @@ TOV_DWARF = Species(
             description="Whenever you make an Intelligence (History) check related to stonework, you are considered proficient and add double your proficiency bonus.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 TOV_ELF = Species(
@@ -2389,7 +2389,7 @@ TOV_ELF = Species(
             description="You don't need to sleep and can't be forced to sleep by any means. To gain the benefits of a long rest, you can spend 4 hours in a trancelike meditation, during which you retain consciousness.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 TOV_HUMAN = Species(
@@ -2422,7 +2422,7 @@ TOV_HUMAN = Species(
             description="You gain one feat of your choice for which you qualify.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 TOV_ORC = Species(
@@ -2455,7 +2455,7 @@ TOV_ORC = Species(
             description="When you are reduced to 0 hit points but not killed outright, you can drop to 1 hit point instead. You can't use this feature again until you finish a long rest.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 TOV_SMALLFOLK = Species(
@@ -2488,7 +2488,7 @@ TOV_SMALLFOLK = Species(
             description="You can move through the space of any creature that is of a size larger than yours.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 TOV_SYDEREAN = Species(
@@ -2521,7 +2521,7 @@ TOV_SYDEREAN = Species(
             description="As an action, you can touch a creature and heal hit points equal to your level. Once you use this trait, you can't use it again until you finish a long rest.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 TOV_KOBOLD = Species(
@@ -2550,7 +2550,7 @@ TOV_KOBOLD = Species(
             description="You have advantage on attack rolls against a creature if at least one of your allies is within 5 feet of the creature and the ally isn't incapacitated.",
         ),
     ],
-    subraces=[],
+    subspecies=[],
 )
 
 # ToV Heritages (cultural backgrounds that combine with lineages)
@@ -2742,21 +2742,21 @@ def get_all_species_names() -> list[str]:
     return list(ALL_SPECIES.keys())
 
 
-def get_subraces(species_name: str) -> list[Subrace]:
-    """Get all subraces for a species."""
+def get_subraces(species_name: str) -> list[Subspecies]:
+    """Get all subspecies for a species."""
     species = get_species(species_name)
     if species:
-        return species.subraces
+        return species.subspecies
     return []
 
 
-def get_subrace(species_name: str, subrace_name: str) -> Optional[Subrace]:
-    """Get a specific subrace by species and subrace name."""
+def get_subspecies(species_name: str, subspecies_name: str) -> Optional[Subspecies]:
+    """Get a specific subspecies by species and subspecies name."""
     species = get_species(species_name)
     if species:
-        for subrace in species.subraces:
-            if subrace.name.lower() == subrace_name.lower():
-                return subrace
+        for subsp in species.subspecies:
+            if subsp.name.lower() == subspecies_name.lower():
+                return subsp
     return None
 
 
@@ -2880,10 +2880,10 @@ def get_species_traits_at_level(species: Species, level: int) -> list[RacialTrai
     return available
 
 
-def get_subrace_traits_at_level(subrace: Subrace, level: int) -> list[RacialTrait]:
-    """Get all subrace traits available at a given character level."""
+def get_subspecies_traits_at_level(subspecies: Subspecies, level: int) -> list[RacialTrait]:
+    """Get all subspecies traits available at a given character level."""
     available = []
-    for trait in subrace.traits:
+    for trait in subspecies.traits:
         if get_trait_min_level(trait) <= level:
             available.append(trait)
     return available
@@ -2892,12 +2892,12 @@ def get_subrace_traits_at_level(subrace: Subrace, level: int) -> list[RacialTrai
 def get_all_traits_at_level(
     species: Species,
     level: int,
-    subrace: Optional[Subrace] = None
+    subspecies: Optional[Subspecies] = None
 ) -> list[RacialTrait]:
-    """Get all traits (species + subrace) available at a given level."""
+    """Get all traits (species + subspecies) available at a given level."""
     traits = get_species_traits_at_level(species, level)
-    if subrace:
-        traits.extend(get_subrace_traits_at_level(subrace, level))
+    if subspecies:
+        traits.extend(get_subspecies_traits_at_level(subspecies, level))
     return traits
 
 
@@ -2909,7 +2909,7 @@ def species_grants_feat(species_name: str, subspecies_name: Optional[str] = None
     - The subspecies (if specified) has such a trait
 
     Known feat-granting species/subspecies:
-    - Human (2014) with Variant Human subrace: grants one feat of choice
+    - Human (2014) with Variant Human subspecies: grants one feat of choice
     - Human (ToV): grants one feat of choice via Ambitious trait
     """
     species = get_species(species_name)
@@ -2918,9 +2918,9 @@ def species_grants_feat(species_name: str, subspecies_name: Optional[str] = None
 
     # Check subspecies traits first (Variant Human)
     if subspecies_name:
-        for subrace in species.subraces:
-            if subrace.name.lower() == subspecies_name.lower():
-                for trait in subrace.traits:
+        for subsp in species.subspecies:
+            if subsp.name.lower() == subspecies_name.lower():
+                for trait in subsp.traits:
                     if trait.name.lower() == "feat" or "feat of your choice" in trait.description.lower():
                         return True
 

@@ -244,7 +244,7 @@ class SpeciesDefinition:
     # Darkvision
     darkvision: int = 0  # Range in feet, 0 = none
 
-    # Subspecies/subrace options
+    # Subspecies options
     subspecies: list[str] = field(default_factory=list)
 
 

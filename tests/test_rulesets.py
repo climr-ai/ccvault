@@ -126,7 +126,7 @@ class TestDnD2014Ruleset:
         assert ruleset.id == "dnd2014"
         assert ruleset.name == "D&D 5e (2014)"
         assert ruleset.species_term == "Race"
-        assert ruleset.subspecies_term == "Subrace"
+        assert ruleset.subspecies_term == "Subspecies"
 
     def test_ability_score_source(self, ruleset):
         """Test that 2014 gets ability bonuses from race."""

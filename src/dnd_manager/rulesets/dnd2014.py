@@ -577,7 +577,7 @@ class DnD2014Ruleset(Ruleset):
 
     @property
     def subspecies_term(self) -> str:
-        return "Subrace"
+        return "Subspecies"
 
     def get_ability_score_source(self) -> str:
         return "race"

@@ -447,8 +447,8 @@ class SemanticLayer:
             "languages": getattr(species, 'languages', []),
             "darkvision": getattr(species, 'darkvision', 0),
             "traits": traits,
-            "has_subraces": bool(species.subraces),
-            "subraces": [s.name for s in species.subraces] if species.subraces else [],
+            "has_subspecies": bool(species.subspecies),
+            "subspecies": [s.name for s in species.subspecies] if species.subspecies else [],
         }
 
     def list_species(self) -> QueryResult:
@@ -464,7 +464,7 @@ class SemanticLayer:
                 "name": species.name,
                 "size": species.size,
                 "speed": species.speed,
-                "has_subraces": bool(species.subraces),
+                "has_subspecies": bool(species.subspecies),
             })
         return QueryResult(
             query_type="species",

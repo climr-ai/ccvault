@@ -336,7 +336,7 @@ class TestRulesetIntegration:
         assert char_2024.get_subspecies_term() == "Subspecies"
 
         char_2014 = Character(meta=CharacterMeta(ruleset=RulesetId.DND_2014))
-        assert char_2014.get_subspecies_term() == "Subrace"
+        assert char_2014.get_subspecies_term() == "Subspecies"
 
         char_tov = Character(meta=CharacterMeta(ruleset=RulesetId.TALES_OF_VALIANT))
         assert char_tov.get_subspecies_term() == "Heritage"
