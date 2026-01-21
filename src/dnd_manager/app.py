@@ -956,12 +956,12 @@ class WelcomeScreen(Screen):
         return self._draft_store
 
     def _get_version(self) -> str:
-        """Get the application version from package metadata or config."""
+        """Get the application version from package metadata."""
         try:
             from importlib.metadata import version
-            return version("dnd-manager")
+            return version("ccvault")
         except Exception:
-            return get_config_manager().config.versions.app_version
+            return "dev"
 
     def compose(self) -> ComposeResult:
         yield Header()

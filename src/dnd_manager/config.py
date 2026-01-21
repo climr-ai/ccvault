@@ -60,10 +60,19 @@ class StorageConfig(BaseModel):
     backup_dir_name: str = Field(default=".backups", description="Name of backup subdirectory")
 
 
+def _get_app_version() -> str:
+    """Get version from package metadata."""
+    try:
+        from importlib.metadata import version
+        return version("ccvault")
+    except Exception:
+        return "dev"
+
+
 class VersionInfo(BaseModel):
     """Version information."""
 
-    app_version: str = Field(default="0.1.2", description="Application version")
+    app_version: str = Field(default_factory=_get_app_version, description="Application version")
     schema_version: str = Field(default="1.0", description="Character data schema version")
 
 

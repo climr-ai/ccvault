@@ -306,9 +306,9 @@ CCVault uses semantic versioning: `MAJOR.MINOR.PATCH`
 - **MINOR (x)** - New features or significant changes
 - **PATCH (y)** - Bug fixes, incremented with each code push
 
-Current version: **0.1.2**
+**Single source of truth:** `pyproject.toml` - all version reads derive from package metadata.
 
-Check your version: The version is displayed on the welcome screen (e.g., "v0.1.1").
+Check your version: Displayed on the welcome screen.
 
 ## License
 
