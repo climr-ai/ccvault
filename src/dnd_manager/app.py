@@ -2823,7 +2823,7 @@ class LibraryBrowserScreen(ListNavigationMixin, Screen):
         yield Header()
         yield Container(
             Static("CLIMR Homebrew Library", classes="title"),
-            Static("↑/↓ Navigate  Type to jump  [/] Search  [F1-F4] Filter", classes="subtitle"),
+            Static("↑/↓ Navigate  Type to jump  / Search  \\[F1-F4] Filter", classes="subtitle"),
             Horizontal(
                 Input(placeholder="Search library...", id="lib-search"),
                 Static(id="filter-mode", classes="filter-mode"),
@@ -4054,7 +4054,7 @@ class FeatPickerScreen(ListNavigationMixin, Screen):
         yield Header()
         yield Container(
             Static("Select a Feat", classes="title"),
-            Static("↑/↓ Navigate  Type to jump  [/] Search  Enter Select", classes="subtitle"),
+            Static("↑/↓ Navigate  Type to jump  / Search  Enter Select", classes="subtitle"),
             Horizontal(
                 Input(placeholder="Search feats...", id="feat-search"),
                 classes="search-row",
@@ -5584,7 +5584,7 @@ class MagicItemBrowserScreen(ListNavigationMixin, Screen):
         yield Header()
         yield Container(
             Static("Magic Item Browser", classes="title"),
-            Static("↑/↓ Navigate  Type to jump  [/] Search  [6-0] Rarity  [-] All", classes="subtitle"),
+            Static("↑/↓ Navigate  Type to jump  / Search  \\[6-0] Rarity  \\[-] All", classes="subtitle"),
             Horizontal(
                 Input(placeholder="Search magic items...", id="item-search"),
                 classes="search-row",
@@ -6043,7 +6043,7 @@ class SpellBrowserScreen(ListNavigationMixin, Screen):
         yield Header()
         yield Container(
             Static("Spell Browser - Add Spells", classes="title"),
-            Static("↑/↓ Navigate  Type to jump  [/] Search  Enter Add", classes="subtitle"),
+            Static("↑/↓ Navigate  Type to jump  / Search  Enter Add", classes="subtitle"),
             Horizontal(
                 Input(placeholder="Search spells...", id="spell-search"),
                 classes="search-row",
@@ -6298,7 +6298,7 @@ class SpellsScreen(Screen):
                     Static("\\[C] Cast selected spell"),
                     Static("\\[P] Toggle prepared"),
                     Static("\\[R] Short/Long rest"),
-                    Static("\\[/] Search spells"),
+                    Static("/ Search spells"),
                     Static(""),
                     Static("SPELL SLOTS", classes="panel-title"),
                     Static(id="slots-detail"),
@@ -6662,7 +6662,7 @@ class SessionNotesScreen(ListNavigationMixin, Screen):
         yield Header()
         yield Container(
             Static("Session Notes", classes="title"),
-            Static("\\[N] New  \\[E] Edit  \\[D] Delete  \\[/] Search  \\[S] Toggle Semantic", classes="subtitle"),
+            Static("\\[N] New  \\[E] Edit  \\[D] Delete  / Search  \\[S] Toggle Semantic", classes="subtitle"),
             Horizontal(
                 Input(placeholder="Search notes...", id="notes-search"),
                 Static(id="search-mode", classes="search-mode"),
