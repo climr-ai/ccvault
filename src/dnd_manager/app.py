@@ -62,7 +62,12 @@ class ListNavigationMixin:
         return "selected"
 
     def _scroll_to_selection(self) -> None:
-        """Scroll to keep the selected item visible, preferring center."""
+        """Scroll to keep the selected item CENTERED in the viewport.
+
+        The selection stays in the middle of the visible area while the list
+        scrolls around it. Only at the edges of the list does the highlight
+        move away from center.
+        """
         container = self._get_scroll_container()
         if container is None:
             return
@@ -76,10 +81,31 @@ class ListNavigationMixin:
             item_class = self._get_item_widget_class()
             widgets = list(container.query(f".{item_class}")) if item_class else list(container.children)
 
-            if self.selected_index < len(widgets):
-                selected_widget = widgets[self.selected_index]
-                # Use Textual's built-in scroll_visible to ensure item is visible
-                selected_widget.scroll_visible(animate=False)
+            if self.selected_index >= len(widgets):
+                return
+
+            selected_widget = widgets[self.selected_index]
+
+            # Get the widget's position relative to the container's content
+            widget_y = selected_widget.region.y
+            widget_height = selected_widget.region.height
+
+            # Get viewport height
+            viewport_height = container.size.height
+
+            # Calculate the scroll position that centers the selected item
+            # Center point of the widget should be at center of viewport
+            widget_center = widget_y + (widget_height // 2)
+            viewport_center = viewport_height // 2
+            target_scroll = widget_center - viewport_center
+
+            # Clamp to valid scroll range
+            max_scroll = container.virtual_size.height - viewport_height
+            target_scroll = max(0, min(target_scroll, max_scroll))
+
+            # Set scroll position directly
+            container.scroll_y = target_scroll
+
         except Exception:
             pass
 
