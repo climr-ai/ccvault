@@ -306,7 +306,7 @@ CCVault uses semantic versioning: `MAJOR.MINOR.PATCH`
 - **MINOR (x)** - New features or significant changes
 - **PATCH (y)** - Bug fixes, incremented with each code push
 
-Current version: **0.1.1**
+Current version: **0.1.2**
 
 Check your version: The version is displayed on the welcome screen (e.g., "v0.1.1").
 
