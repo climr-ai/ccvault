@@ -21,10 +21,12 @@ from dnd_manager.data import (
     get_species,
     get_subraces,
     get_origin_feats,
+    get_general_feats,
     get_all_background_names,
     get_background,
     get_class_info,
     get_feat,
+    species_grants_feat,
 )
 from dnd_manager.data.backgrounds import get_origin_feat_for_background
 
@@ -179,8 +181,8 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         # Letter jump tracking
         self._last_letter: str = ""
         self._last_letter_index: int = -1
-        # Dynamic steps - subspecies and origin_feat may be skipped
-        self.all_steps = ["ruleset", "name", "class", "species", "subspecies", "background", "origin_feat", "abilities", "confirm"]
+        # Dynamic steps - subspecies, species_feat, and origin_feat may be skipped
+        self.all_steps = ["ruleset", "name", "class", "species", "subspecies", "species_feat", "background", "origin_feat", "abilities", "confirm"]
 
         # Get defaults from config
         config = get_config_manager().config
@@ -194,6 +196,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 "class": draft_data.get("class", defaults.class_name),
                 "species": draft_data.get("species", defaults.species),
                 "subspecies": draft_data.get("subspecies"),
+                "species_feat": draft_data.get("species_feat"),
                 "background": draft_data.get("background", defaults.background),
                 "origin_feat": draft_data.get("origin_feat"),
                 "ruleset": draft_data.get("ruleset", defaults.ruleset),
@@ -205,6 +208,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 "class": defaults.class_name,
                 "species": defaults.species,
                 "subspecies": None,
+                "species_feat": None,
                 "background": defaults.background,
                 "origin_feat": None,
                 "ruleset": defaults.ruleset,
@@ -237,6 +241,12 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 # Skip if selected species has no subraces
                 subraces = get_subraces(self.char_data.get("species", ""))
                 if not subraces:
+                    continue
+            elif step == "species_feat":
+                # Skip if species/subspecies doesn't grant a feat choice
+                species_name = self.char_data.get("species", "")
+                subspecies_name = self.char_data.get("subspecies")
+                if not species_grants_feat(species_name, subspecies_name):
                     continue
             elif step == "origin_feat":
                 # Skip for 2014 rules (no origin feats)
@@ -297,8 +307,9 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             "class": "Class",
             "species": "Species",
             "subspecies": "Subrace",
+            "species_feat": "Bonus Feat",
             "background": "Background",
-            "origin_feat": "Feat",
+            "origin_feat": "Origin Feat",
             "abilities": "Abilities",
             "confirm": "Confirm",
         }
@@ -368,6 +379,17 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 self.current_options = []
             self._refresh_options()
 
+        elif step_name == "species_feat":
+            title.update("BONUS FEAT")
+            species_name = self.char_data.get("species", "")
+            subspecies_name = self.char_data.get("subspecies")
+            source = subspecies_name if subspecies_name else species_name
+            description.update(f"Your {source} grants you a feat of your choice:")
+            # Get general feats (no prerequisites for level 1 character)
+            general_feats = get_general_feats()
+            self.current_options = sorted([f.name for f in general_feats if not f.prerequisites])
+            self._refresh_options()
+
         elif step_name == "background":
             title.update("CHOOSE BACKGROUND")
             description.update("Select your character's background - this shapes their history and skills")
@@ -407,6 +429,8 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             if self.char_data.get('subspecies'):
                 species_display += f" ({self.char_data['subspecies']})"
             options_list.mount(Static(f"  Species: {species_display}"))
+            if self.char_data.get('species_feat'):
+                options_list.mount(Static(f"  Bonus Feat: {self.char_data['species_feat']}"))
             options_list.mount(Static(f"  Background: {self.char_data['background']}"))
             if self.char_data.get('origin_feat'):
                 options_list.mount(Static(f"  Origin Feat: {self.char_data['origin_feat']}"))
@@ -476,6 +500,8 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             self._show_species_details(selected_name, detail_title, detail_content)
         elif step_name == "subspecies":
             self._show_subspecies_details(selected_name, detail_title, detail_content)
+        elif step_name == "species_feat":
+            self._show_feat_details(selected_name, detail_title, detail_content)
         elif step_name == "background":
             self._show_background_details(selected_name, detail_title, detail_content)
         elif step_name == "origin_feat":
@@ -795,11 +821,17 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             self.char_data["class"] = self.current_options[self.selected_option]
         elif step_name == "species":
             self.char_data["species"] = self.current_options[self.selected_option]
-            # Reset subspecies when species changes
+            # Reset subspecies and species_feat when species changes
             self.char_data["subspecies"] = None
+            self.char_data["species_feat"] = None
         elif step_name == "subspecies":
             if self.current_options:
                 self.char_data["subspecies"] = self.current_options[self.selected_option]
+                # Reset species_feat when subspecies changes (it may affect feat eligibility)
+                self.char_data["species_feat"] = None
+        elif step_name == "species_feat":
+            if self.current_options:
+                self.char_data["species_feat"] = self.current_options[self.selected_option]
         elif step_name == "background":
             self.char_data["background"] = self.current_options[self.selected_option]
         elif step_name == "origin_feat":
@@ -828,6 +860,17 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         char.species = self.char_data["species"]
         char.subspecies = self.char_data.get("subspecies")
         char.background = self.char_data["background"]
+
+        # Add species feat if selected (from Variant Human or Human ToV)
+        if self.char_data.get("species_feat"):
+            feat_name = self.char_data["species_feat"]
+            feat_data = get_feat(feat_name)
+            if feat_data:
+                char.features.append(Feature(
+                    name=feat_name,
+                    source="feat",
+                    description=feat_data.description,
+                ))
 
         # Add origin feat if selected
         if self.char_data.get("origin_feat"):
@@ -877,7 +920,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         """Handle key presses for letter navigation."""
         step_name = self.steps[self.step] if self.step < len(self.steps) else ""
         # Only do letter jump on steps that show options list
-        if step_name in ("class", "species", "subspecies", "background", "origin_feat"):
+        if step_name in ("class", "species", "subspecies", "species_feat", "background", "origin_feat"):
             if self._handle_key_for_letter_jump(event.key):
                 event.prevent_default()
 

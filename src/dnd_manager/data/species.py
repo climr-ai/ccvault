@@ -2886,3 +2886,34 @@ def get_all_traits_at_level(
     if subrace:
         traits.extend(get_subrace_traits_at_level(subrace, level))
     return traits
+
+
+def species_grants_feat(species_name: str, subspecies_name: Optional[str] = None) -> bool:
+    """Check if a species/subspecies grants a feat choice at character creation.
+
+    Returns True if:
+    - The species has a trait named "Feat" or containing "feat of your choice"
+    - The subspecies (if specified) has such a trait
+
+    Known feat-granting species/subspecies:
+    - Human (2014) with Variant Human subrace: grants one feat of choice
+    - Human (ToV): grants one feat of choice via Ambitious trait
+    """
+    species = get_species(species_name)
+    if not species:
+        return False
+
+    # Check subspecies traits first (Variant Human)
+    if subspecies_name:
+        for subrace in species.subraces:
+            if subrace.name.lower() == subspecies_name.lower():
+                for trait in subrace.traits:
+                    if trait.name.lower() == "feat" or "feat of your choice" in trait.description.lower():
+                        return True
+
+    # Check main species traits (Human ToV)
+    for trait in species.traits:
+        if trait.name.lower() == "feat" or "feat of your choice" in trait.description.lower():
+            return True
+
+    return False

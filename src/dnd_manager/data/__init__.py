@@ -143,6 +143,8 @@ from dnd_manager.data.species import (
     get_species_traits_at_level,
     get_subrace_traits_at_level,
     get_all_traits_at_level,
+    # Species feat check
+    species_grants_feat,
 )
 
 from dnd_manager.data.feats import (
@@ -374,6 +376,7 @@ __all__ = [
     "get_species_traits_at_level",
     "get_subrace_traits_at_level",
     "get_all_traits_at_level",
+    "species_grants_feat",
     # Feats
     "Feat",
     "ORIGIN_FEATS",
