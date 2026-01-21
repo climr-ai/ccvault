@@ -63,7 +63,7 @@ class StorageConfig(BaseModel):
 class VersionInfo(BaseModel):
     """Version information."""
 
-    app_version: str = Field(default="0.1.1", description="Application version")
+    app_version: str = Field(default="0.1.2", description="Application version")
     schema_version: str = Field(default="1.0", description="Character data schema version")
 
 

@@ -895,8 +895,19 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             self._expected_highlight = new_index  # Update expected for future events
             self._refresh_details()
 
-            with open(log_file, "a") as f:
-                f.write(f"{datetime.datetime.now()} highlighted: {old_index}→{self.selected_option}\n")
+            # Scroll to center the highlighted item
+            options_list = event.option_list
+            viewport_height = options_list.size.height
+            if viewport_height > 0:
+                # Each option is 1 line tall in OptionList
+                target_scroll = max(0, new_index - viewport_height // 2)
+                options_list.scroll_y = target_scroll
+
+                with open(log_file, "a") as f:
+                    f.write(f"{datetime.datetime.now()} highlighted: {old_index}→{new_index}, scroll_y={target_scroll} (vh={viewport_height})\n")
+            else:
+                with open(log_file, "a") as f:
+                    f.write(f"{datetime.datetime.now()} highlighted: {old_index}→{self.selected_option}\n")
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle option selection (Enter key or click)."""
