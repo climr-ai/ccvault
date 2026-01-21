@@ -749,12 +749,8 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             def restore_scroll() -> None:
                 before_restore = options_list.scroll_y
                 options_list.scroll_y = saved_scroll
-                after_restore = options_list.scroll_y
-                if 0 <= new_index < len(widgets):
-                    widgets[new_index].scroll_visible(animate=False)
-                final = options_list.scroll_y
                 with open(log_file, "a") as f:
-                    f.write(f"{datetime.datetime.now()} nav {old_index}→{new_index}: saved={saved_scroll:.1f} before_restore={before_restore:.1f} after_restore={after_restore:.1f} final={final:.1f}\n")
+                    f.write(f"{datetime.datetime.now()} nav {old_index}→{new_index}: saved={saved_scroll:.1f} before_restore={before_restore:.1f} after_restore={saved_scroll:.1f}\n")
 
             self.set_timer(0.05, restore_scroll)
             self._refresh_details()
