@@ -407,19 +407,15 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             options_list.display = True
             description.update("")
 
-    def _refresh_options(self, scroll: str = "center") -> None:
-        """Refresh the options list display.
-
-        Args:
-            scroll: "center" to center selection, "visible" to just ensure visible, "none" to skip.
-        """
+    def _refresh_options(self) -> None:
+        """Rebuild the options list. Only call on step transitions, not navigation."""
         try:
             options_list = self.query_one("#options-list", VerticalScroll)
         except Exception:
             # Screen not mounted yet
             return
 
-        # Rebuild widgets
+        # Rebuild all widgets for the new step
         options_list.remove_children()
         for i, option in enumerate(self.current_options):
             selected = "▶ " if i == self.selected_option else "  "
@@ -428,12 +424,6 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 index=i,
                 classes=f"option-item {'selected' if i == self.selected_option else ''}",
             ))
-
-        # Scroll based on mode
-        if scroll == "center":
-            self.set_timer(0.05, self._scroll_to_selection)
-        elif scroll == "visible":
-            self.set_timer(0.01, self._scroll_selection_visible)
 
         self._refresh_details()
 
@@ -731,13 +721,30 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
     def _get_item_widget_class(self) -> str:
         return "option-item"
 
-    def _scroll_selection_visible(self) -> None:
-        """Scroll just enough to make the selected item visible."""
+    def _update_selection_visual(self, old_index: int, new_index: int) -> None:
+        """Update just the two widgets that changed during navigation.
+
+        This avoids rebuilding the entire list, preventing scroll/layout issues.
+        """
         try:
-            container = self.query_one("#options-list", VerticalScroll)
-            widgets = list(container.query(".option-item"))
-            if self.selected_option < len(widgets):
-                widgets[self.selected_option].scroll_visible(animate=False)
+            options_list = self.query_one("#options-list", VerticalScroll)
+            widgets = list(options_list.query(".option-item"))
+
+            # Update old widget (remove selection)
+            if 0 <= old_index < len(widgets):
+                old_widget = widgets[old_index]
+                old_widget.update(f"  {self.current_options[old_index]}")
+                old_widget.remove_class("selected")
+
+            # Update new widget (add selection)
+            if 0 <= new_index < len(widgets):
+                new_widget = widgets[new_index]
+                new_widget.update(f"▶ {self.current_options[new_index]}")
+                new_widget.add_class("selected")
+                # Scroll into view if needed
+                new_widget.scroll_visible(animate=False)
+
+            self._refresh_details()
         except Exception:
             pass
 
@@ -865,14 +872,16 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
     def action_prev_option(self) -> None:
         """Select previous option."""
         if self.current_options and self.selected_option > 0:
+            old_index = self.selected_option
             self.selected_option -= 1
-            self._refresh_options(scroll="visible")
+            self._update_selection_visual(old_index, self.selected_option)
 
     def action_next_option(self) -> None:
         """Select next option."""
         if self.current_options and self.selected_option < len(self.current_options) - 1:
+            old_index = self.selected_option
             self.selected_option += 1
-            self._refresh_options(scroll="visible")
+            self._update_selection_visual(old_index, self.selected_option)
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -893,8 +902,9 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
     def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
         """Handle mouse click on a list item."""
         if 0 <= event.index < len(self.current_options):
+            old_index = self.selected_option
             self.selected_option = event.index
-            self._refresh_options(scroll="none")
+            self._update_selection_visual(old_index, self.selected_option)
 
     def action_cancel(self) -> None:
         """Cancel character creation - draft is auto-saved for resume."""
