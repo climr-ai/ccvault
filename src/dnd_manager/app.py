@@ -407,15 +407,19 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             options_list.display = True
             description.update("")
 
-    def _refresh_options(self) -> None:
-        """Refresh the options list display and scroll to selection."""
+    def _refresh_options(self, scroll: bool = True) -> None:
+        """Refresh the options list display.
+
+        Args:
+            scroll: If True, scroll to center the selection after refresh.
+        """
         try:
             options_list = self.query_one("#options-list", VerticalScroll)
         except Exception:
             # Screen not mounted yet
             return
 
-        # Always rebuild to ensure consistent visual state
+        # Rebuild widgets
         options_list.remove_children()
         for i, option in enumerate(self.current_options):
             selected = "▶ " if i == self.selected_option else "  "
@@ -424,7 +428,10 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 index=i,
                 classes=f"option-item {'selected' if i == self.selected_option else ''}",
             ))
-        self.call_after_refresh(self._scroll_to_selection)
+
+        # Only scroll on step transitions, not during navigation
+        if scroll:
+            self.call_after_refresh(self._scroll_to_selection)
 
         self._refresh_details()
 
@@ -847,13 +854,13 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         """Select previous option."""
         if self.current_options and self.selected_option > 0:
             self.selected_option -= 1
-            self._refresh_options()
+            self._refresh_options(scroll=False)
 
     def action_next_option(self) -> None:
         """Select next option."""
         if self.current_options and self.selected_option < len(self.current_options) - 1:
             self.selected_option += 1
-            self._refresh_options()
+            self._refresh_options(scroll=False)
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -875,7 +882,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         """Handle mouse click on a list item."""
         if 0 <= event.index < len(self.current_options):
             self.selected_option = event.index
-            self._refresh_options()
+            self._refresh_options(scroll=False)
 
     def action_cancel(self) -> None:
         """Cancel character creation - draft is auto-saved for resume."""
