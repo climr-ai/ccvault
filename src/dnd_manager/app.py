@@ -10,6 +10,7 @@ from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Header, Footer, Static, Button, Label, Input, RichLog
 from textual.screen import Screen
+from textual.message import Message
 
 from dnd_manager.config import Config, get_config_manager
 from dnd_manager.models.character import Character, RulesetId, Feature
@@ -24,6 +25,24 @@ from dnd_manager.data import (
     get_class_info,
     get_feat,
 )
+
+
+class ClickableListItem(Static):
+    """A clickable list item that emits a message when clicked."""
+
+    class Selected(Message):
+        """Message sent when this item is clicked."""
+        def __init__(self, index: int) -> None:
+            self.index = index
+            super().__init__()
+
+    def __init__(self, content: str, index: int, **kwargs) -> None:
+        super().__init__(content, **kwargs)
+        self.item_index = index
+
+    def on_click(self) -> None:
+        """Handle click by posting a Selected message."""
+        self.post_message(self.Selected(self.item_index))
 
 
 class ListNavigationMixin:
@@ -62,9 +81,10 @@ class ListNavigationMixin:
         return "selected"
 
     def _scroll_to_selection(self) -> None:
-        """Scroll to keep the selected item CENTERED in the viewport.
+        """Scroll to keep the selected item visible in the viewport.
 
-        Uses Textual's built-in scroll_to_center() method.
+        Uses scroll_to_widget which scrolls minimum amount needed to make
+        the widget visible.
         """
         container = self._get_scroll_container()
         if container is None:
@@ -81,8 +101,8 @@ class ListNavigationMixin:
 
             if self.selected_index < len(widgets):
                 selected_widget = widgets[self.selected_index]
-                # Use Textual's built-in centering
-                container.scroll_to_center(selected_widget, animate=False)
+                # Scroll minimum amount to make widget visible
+                container.scroll_to_widget(selected_widget, animate=False)
         except Exception:
             pass
 
@@ -398,13 +418,15 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
         for i, option in enumerate(self.current_options):
             selected = "▶ " if i == self.selected_option else "  "
-            options_list.mount(Static(
+            options_list.mount(ClickableListItem(
                 f"{selected}{option}",
+                index=i,
                 classes=f"option-item {'selected' if i == self.selected_option else ''}",
             ))
 
-        self._scroll_to_selection()
         self._refresh_details()
+        # Defer scroll to after layout is complete
+        self.call_after_refresh(self._scroll_to_selection)
 
     def _refresh_details(self) -> None:
         """Update the detail panel with information about the selected option."""
@@ -664,9 +686,9 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         lines = []
         lines.append(feat.description)
 
-        if feat.prerequisite:
+        if feat.prerequisites:
             lines.append("")
-            lines.append(f"Prerequisite: {feat.prerequisite}")
+            lines.append(f"Prerequisites: {', '.join(feat.prerequisites)}")
 
         if feat.benefits:
             lines.append("")
@@ -849,6 +871,12 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             if self._handle_key_for_letter_jump(event.key):
                 event.prevent_default()
 
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        """Handle mouse click on a list item."""
+        if 0 <= event.index < len(self.current_options):
+            self.selected_option = event.index
+            self._refresh_options()
+
     def action_cancel(self) -> None:
         """Cancel character creation - draft is auto-saved for resume."""
         self._save_draft()  # Ensure latest state is saved
@@ -1011,9 +1039,16 @@ class WelcomeScreen(Screen):
 class CharacterListItem(Static):
     """A single character in the selection list."""
 
-    def __init__(self, char_info: dict, **kwargs) -> None:
+    class Selected(Message):
+        """Message sent when this character item is clicked."""
+        def __init__(self, index: int) -> None:
+            self.index = index
+            super().__init__()
+
+    def __init__(self, char_info: dict, index: int = 0, **kwargs) -> None:
         super().__init__(**kwargs)
         self.char_info = char_info
+        self.item_index = index
 
     def compose(self) -> ComposeResult:
         info = self.char_info
@@ -1026,6 +1061,10 @@ class CharacterListItem(Static):
 
         yield Static(f"  {info['name']}", classes="char-name")
         yield Static(f"    {class_info} | {species} | {ruleset}", classes="char-details")
+
+    def on_click(self) -> None:
+        """Handle click by posting a Selected message."""
+        self.post_message(self.Selected(self.item_index))
 
 
 class CharacterSelectScreen(ListNavigationMixin, Screen):
@@ -1058,7 +1097,7 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
         """Populate the character list."""
         list_container = self.query_one("#character-list", VerticalScroll)
         for i, char_info in enumerate(self.characters):
-            item = CharacterListItem(char_info, id=f"char-{i}", classes="char-item")
+            item = CharacterListItem(char_info, index=i, id=f"char-{i}", classes="char-item")
             if i == 0:
                 item.add_class("selected")
             list_container.mount(item)
@@ -1087,6 +1126,7 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
                 item.add_class("selected")
             else:
                 item.remove_class("selected")
+        self.call_after_refresh(self._scroll_to_selection)
 
     def action_cancel(self) -> None:
         """Return to welcome screen."""
@@ -1115,6 +1155,12 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
         """Handle letter keys for jump navigation."""
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
+
+    def on_character_list_item_selected(self, event: CharacterListItem.Selected) -> None:
+        """Handle mouse click on a character item."""
+        if 0 <= event.index < len(self.characters):
+            self.selected_index = event.index
+            self._update_selection()
 
 
 class AbilityBlock(Static):
@@ -2131,8 +2177,9 @@ class LibraryBrowserScreen(ListNavigationMixin, Screen):
             stars = "★" * int(item.rating.average)
             installed = " ✓" if self.library.is_installed(item.id) else ""
 
-            list_widget.mount(Static(
+            list_widget.mount(ClickableListItem(
                 f"{selected}[{item.content_type.value[:6]}] {item.name[:25]}{installed}",
+                index=i,
                 classes=f"lib-item {'selected' if i == self.selected_index else ''}",
             ))
 
@@ -2218,7 +2265,7 @@ class LibraryBrowserScreen(ListNavigationMixin, Screen):
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_list()
-        self._scroll_to_selection()
+        self.call_after_refresh(self._scroll_to_selection)
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -2237,6 +2284,13 @@ class LibraryBrowserScreen(ListNavigationMixin, Screen):
             pass
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
+
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        """Handle mouse click on a list item."""
+        if 0 <= event.index < len(self.items):
+            self.selected_index = event.index
+            self._update_selection()
+            self._show_details(self.items[self.selected_index])
 
     def action_view(self) -> None:
         """View full details."""
@@ -3347,8 +3401,9 @@ class FeatPickerScreen(ListNavigationMixin, Screen):
             if not can_take:
                 feat_class += " unavailable"
 
-            list_widget.mount(Static(
+            list_widget.mount(ClickableListItem(
                 f"  {feat.name}{prereq_mark}",
+                index=i,
                 classes=feat_class,
             ))
 
@@ -3460,7 +3515,7 @@ class FeatPickerScreen(ListNavigationMixin, Screen):
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_feat_list()
-        self._scroll_to_selection()
+        self.call_after_refresh(self._scroll_to_selection)
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -3480,6 +3535,12 @@ class FeatPickerScreen(ListNavigationMixin, Screen):
             pass
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
+
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        """Handle mouse click on a list item."""
+        if 0 <= event.index < len(self.filtered_feats):
+            self.selected_index = event.index
+            self._update_selection()
 
     def action_search(self) -> None:
         """Focus the search input."""
@@ -3578,8 +3639,9 @@ class SubclassPickerScreen(ListNavigationMixin, Screen):
             if i == self.selected_index:
                 subclass_class += " selected"
 
-            list_widget.mount(Static(
+            list_widget.mount(ClickableListItem(
                 f"  {subclass.name}",
+                index=i,
                 classes=subclass_class,
             ))
 
@@ -3635,7 +3697,7 @@ class SubclassPickerScreen(ListNavigationMixin, Screen):
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_subclass_list()
-        self._scroll_to_selection()
+        self.call_after_refresh(self._scroll_to_selection)
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -3649,6 +3711,12 @@ class SubclassPickerScreen(ListNavigationMixin, Screen):
         """Handle letter keys for jump navigation."""
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
+
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        """Handle mouse click on a list item."""
+        if 0 <= event.index < len(self.subclasses):
+            self.selected_index = event.index
+            self._update_selection()
 
     def action_select(self) -> None:
         """Select the current subclass."""
@@ -4468,8 +4536,9 @@ class InventoryScreen(ListNavigationMixin, Screen):
             if item.equipped:
                 item_class += " equipped"
 
-            list_widget.mount(Static(
+            list_widget.mount(ClickableListItem(
                 f"  {equipped} {item.name}{qty}{attuned}",
+                index=i,
                 classes=item_class,
             ))
 
@@ -4534,7 +4603,7 @@ class InventoryScreen(ListNavigationMixin, Screen):
     def _update_selection(self) -> None:
         """Update selection - refreshes the inventory display."""
         self._refresh_inventory()
-        self._scroll_to_selection()
+        self.call_after_refresh(self._scroll_to_selection)
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -4548,6 +4617,13 @@ class InventoryScreen(ListNavigationMixin, Screen):
         """Handle letter keys for jump navigation."""
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
+
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        """Handle mouse click on a list item."""
+        items = self.character.equipment.items
+        if 0 <= event.index < len(items):
+            self.selected_index = event.index
+            self._update_selection()
 
     def action_back(self) -> None:
         """Return to dashboard."""
@@ -4665,8 +4741,9 @@ class MagicItemBrowserScreen(ListNavigationMixin, Screen):
             if i == self.selected_index:
                 item_class += " selected"
 
-            list_widget.mount(Static(
+            list_widget.mount(ClickableListItem(
                 f"  {rarity_mark}{item.name}{attune_mark}",
+                index=i,
                 classes=item_class,
             ))
 
@@ -4739,7 +4816,7 @@ class MagicItemBrowserScreen(ListNavigationMixin, Screen):
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_item_list()
-        self._scroll_to_selection()
+        self.call_after_refresh(self._scroll_to_selection)
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -4758,6 +4835,12 @@ class MagicItemBrowserScreen(ListNavigationMixin, Screen):
             pass
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
+
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        """Handle mouse click on a list item."""
+        if 0 <= event.index < len(self.filtered_items):
+            self.selected_index = event.index
+            self._update_selection()
 
     def action_search(self) -> None:
         """Focus the search input."""
@@ -5104,8 +5187,9 @@ class SpellBrowserScreen(ListNavigationMixin, Screen):
         for i, spell in enumerate(spells):
             level_str = "Cantrip" if spell.level == 0 else f"Level {spell.level}"
             selected = "▶ " if i == self.selected_index else "  "
-            list_widget.mount(Static(
+            list_widget.mount(ClickableListItem(
                 f"{selected}{spell.name} ({level_str})",
+                index=i,
                 classes=f"spell-browser-item {'selected' if i == self.selected_index else ''}",
             ))
 
@@ -5175,7 +5259,7 @@ class SpellBrowserScreen(ListNavigationMixin, Screen):
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_list()
-        self._scroll_to_selection()
+        self.call_after_refresh(self._scroll_to_selection)
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -5194,6 +5278,16 @@ class SpellBrowserScreen(ListNavigationMixin, Screen):
             pass
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
+
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        """Handle mouse click on a list item."""
+        spells = self.filtered_spells
+        if self.search_query:
+            query = self.search_query.lower()
+            spells = [s for s in spells if query in s.name.lower()]
+        if 0 <= event.index < len(spells):
+            self.selected_index = event.index
+            self._update_selection()
 
     def action_add_spell(self) -> None:
         """Add the selected spell to the character."""
@@ -5668,8 +5762,9 @@ class SessionNotesScreen(ListNavigationMixin, Screen):
             if len(note.title) > 30:
                 title += "..."
 
-            list_widget.mount(Static(
+            list_widget.mount(ClickableListItem(
                 f"{selected}{date_str} - {title}",
+                index=i,
                 classes=f"note-list-item {'selected' if i == self.selected_index else ''}",
             ))
 
@@ -5728,7 +5823,7 @@ class SessionNotesScreen(ListNavigationMixin, Screen):
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_list()
-        self._scroll_to_selection()
+        self.call_after_refresh(self._scroll_to_selection)
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -5747,6 +5842,12 @@ class SessionNotesScreen(ListNavigationMixin, Screen):
             pass
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
+
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        """Handle mouse click on a list item."""
+        if 0 <= event.index < len(self.notes):
+            self.selected_index = event.index
+            self._update_selection()
 
     async def action_new_note(self) -> None:
         """Create a new note."""
