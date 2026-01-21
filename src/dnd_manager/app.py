@@ -24,13 +24,14 @@ from dnd_manager.data import (
 
 
 class ListNavigationMixin:
-    """Mixin providing standard list navigation: letter jump and center-scroll.
+    """Mixin providing standard list navigation: letter jump and scroll-into-view.
 
     Subclasses must implement:
     - _get_list_items() -> list: Return the list of items
     - _get_item_name(item) -> str: Return the display name for an item
     - _get_scroll_container() -> VerticalScroll: Return the scrollable container
     - _update_selection(): Update the visual selection state
+    - _get_item_widget_class() -> str: CSS class for list item widgets (e.g., "spell-browser-item")
 
     Subclasses should have:
     - self.selected_index: int tracking current selection
@@ -53,53 +54,45 @@ class ListNavigationMixin:
         """Override to return the scrollable container widget."""
         return None
 
+    def _get_item_widget_class(self) -> str:
+        """Override to return the CSS class for item widgets."""
+        return "selected"
+
     def _scroll_to_selection(self) -> None:
-        """Scroll the list to keep selection centered."""
+        """Scroll to keep the selected item visible, preferring center."""
         container = self._get_scroll_container()
         if container is None:
             return
 
         items = self._get_list_items()
-        if not items:
+        if not items or self.selected_index >= len(items):
             return
 
-        # Calculate scroll position to center the selection
-        total_items = len(items)
-        if total_items == 0:
-            return
-
-        # Get container dimensions
         try:
-            visible_height = container.size.height
-            # Estimate item height (typically 1-2 lines per item)
-            item_height = 1
-            visible_items = max(1, visible_height // item_height)
+            # Find all item widgets in the container
+            item_class = self._get_item_widget_class()
+            widgets = list(container.query(f".{item_class}")) if item_class else list(container.children)
 
-            # Calculate target scroll to center selection
-            center_offset = visible_items // 2
-            target_line = max(0, self.selected_index - center_offset)
-
-            # Scroll to the target position
-            container.scroll_to(y=target_line * item_height, animate=False)
+            if self.selected_index < len(widgets):
+                selected_widget = widgets[self.selected_index]
+                # Use Textual's built-in scroll_visible to ensure item is visible
+                selected_widget.scroll_visible(animate=False)
         except Exception:
-            # Fallback: just try to scroll the selected item into view
             pass
 
     def _navigate_up(self) -> None:
-        """Move selection up with center-scroll."""
+        """Move selection up with scroll."""
         items = self._get_list_items()
         if self.selected_index > 0:
             self.selected_index -= 1
             self._update_selection()
-            self._scroll_to_selection()
 
     def _navigate_down(self) -> None:
-        """Move selection down with center-scroll."""
+        """Move selection down with scroll."""
         items = self._get_list_items()
         if self.selected_index < len(items) - 1:
             self.selected_index += 1
             self._update_selection()
-            self._scroll_to_selection()
 
     def _jump_to_letter(self, letter: str) -> bool:
         """Jump to next item starting with letter. Returns True if found."""
@@ -122,7 +115,6 @@ class ListNavigationMixin:
         # If same letter pressed again, cycle to next match
         if letter == self._last_letter and self._last_letter_index >= 0:
             # Find next match after current position
-            current_pos = self._last_letter_index
             next_matches = [i for i in matching_indices if i > self.selected_index]
             if next_matches:
                 self.selected_index = next_matches[0]
@@ -138,7 +130,6 @@ class ListNavigationMixin:
             self._last_letter_index = 0
 
         self._update_selection()
-        self._scroll_to_selection()
         return True
 
     def _handle_key_for_letter_jump(self, key: str) -> bool:
@@ -739,14 +730,15 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
         except Exception:
             return None
 
+    def _get_item_widget_class(self) -> str:
+        return "char-item"
+
     def _update_selection(self) -> None:
-        """Update the visual selection and scroll into view."""
+        """Update the visual selection."""
         items = list(self.query(".char-item"))
         for i, item in enumerate(items):
             if i == self.selected_index:
                 item.add_class("selected")
-                # Scroll the selected item into view
-                item.scroll_visible()
             else:
                 item.remove_class("selected")
 
@@ -1874,9 +1866,13 @@ class LibraryBrowserScreen(ListNavigationMixin, Screen):
         except Exception:
             return None
 
+    def _get_item_widget_class(self) -> str:
+        return "lib-item"
+
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_list()
+        self._scroll_to_selection()
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -3112,9 +3108,13 @@ class FeatPickerScreen(ListNavigationMixin, Screen):
         except Exception:
             return None
 
+    def _get_item_widget_class(self) -> str:
+        return "feat-row"
+
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_feat_list()
+        self._scroll_to_selection()
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -3283,9 +3283,13 @@ class SubclassPickerScreen(ListNavigationMixin, Screen):
         except Exception:
             return None
 
+    def _get_item_widget_class(self) -> str:
+        return "subclass-row"
+
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_subclass_list()
+        self._scroll_to_selection()
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -4178,9 +4182,13 @@ class InventoryScreen(ListNavigationMixin, Screen):
         except Exception:
             return None
 
+    def _get_item_widget_class(self) -> str:
+        return "item-row"
+
     def _update_selection(self) -> None:
         """Update selection - refreshes the inventory display."""
         self._refresh_inventory()
+        self._scroll_to_selection()
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -4379,9 +4387,13 @@ class MagicItemBrowserScreen(ListNavigationMixin, Screen):
         except Exception:
             return None
 
+    def _get_item_widget_class(self) -> str:
+        return "item-row"
+
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_item_list()
+        self._scroll_to_selection()
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -4811,9 +4823,13 @@ class SpellBrowserScreen(ListNavigationMixin, Screen):
         except Exception:
             return None
 
+    def _get_item_widget_class(self) -> str:
+        return "spell-browser-item"
+
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_list()
+        self._scroll_to_selection()
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -5360,9 +5376,13 @@ class SessionNotesScreen(ListNavigationMixin, Screen):
         except Exception:
             return None
 
+    def _get_item_widget_class(self) -> str:
+        return "note-list-item"
+
     def _update_selection(self) -> None:
         """Update selection - refreshes the list display."""
         self._refresh_list()
+        self._scroll_to_selection()
 
     def key_up(self) -> None:
         """Move selection up."""
