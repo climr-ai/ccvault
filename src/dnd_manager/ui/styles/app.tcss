@@ -688,6 +688,23 @@ Footer {
 .options-list {
     height: 1fr;
     max-height: 100%;
+    border: none;
+    scrollbar-gutter: stable;
 }
 
-/* OptionList uses its own internal styling for highlighted items */
+.options-list:focus {
+    border: none;
+}
+
+.options-list > .option-list--option {
+    padding: 0 1;
+}
+
+.options-list > .option-list--option-highlighted {
+    background: $primary-darken-2;
+    color: $text;
+}
+
+.options-list > .option-list--option-hover {
+    background: $surface-darken-1;
+}
