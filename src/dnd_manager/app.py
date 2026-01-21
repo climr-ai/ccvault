@@ -239,6 +239,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         self.score_assignments: dict[str, int | None] = {a: None for a in ABILITIES}  # ability -> score index
         self.bonus_plus_2: str | None = None     # For 2024: ability name for +2
         self.bonus_plus_1: str | None = None     # For 2024: ability name for +1
+        self.bonus_mode: str = "split"           # For 2024: "split" (+2/+1) or "spread" (+1/+1/+1)
         self.ability_selected_index = 0          # Current selection in ability lists
 
     @property
@@ -463,10 +464,16 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             if ruleset == "dnd2014":
                 bonuses = self._get_racial_bonuses()
             elif ruleset == "dnd2024":
-                if self.bonus_plus_2:
-                    bonuses[self.bonus_plus_2.lower()] = 2
-                if self.bonus_plus_1:
-                    bonuses[self.bonus_plus_1.lower()] = 1
+                if self.bonus_mode == "spread":
+                    # +1 to each of the three background abilities
+                    for opt in self._get_background_bonus_options():
+                        bonuses[opt.lower()] = 1
+                else:
+                    # +2/+1 split
+                    if self.bonus_plus_2:
+                        bonuses[self.bonus_plus_2.lower()] = 2
+                    if self.bonus_plus_1:
+                        bonuses[self.bonus_plus_1.lower()] = 1
 
             scores_parts = []
             for ability in ABILITIES:
@@ -987,7 +994,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         detail_panel.display = False
 
     def _show_bonuses_2024(self) -> None:
-        """Display bonus selection for 2024 rules (background provides +2/+1 choice)."""
+        """Display bonus selection for 2024 rules (background provides +2/+1 or +1/+1/+1 choice)."""
         title = self.query_one("#step-title", Static)
         description = self.query_one("#step-description", Static)
         options_list = self.query_one("#options-list", OptionList)
@@ -1002,28 +1009,64 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             # Default to all abilities if no specific options
             options = [a.title() for a in ABILITIES]
 
-        lines = [f"Your background ({background_name}) allows:", "  +2 to one ability, +1 to another", "", "\\[C] clear current, \\[X] clear all", ""]
-
-        # Show selection state
+        # Step 0: Choose bonus mode
         if self.ability_selected_index == 0:
-            lines.append("Select +2 bonus:")
-        else:
-            lines.append(f"+2 bonus: {self.bonus_plus_2 or '--'}")
+            lines = [
+                f"Your background ({background_name}) allows:",
+                f"  Options: {', '.join(options)}",
+                "",
+                "Choose how to distribute bonuses:",
+            ]
+            self.current_options = [
+                "+2 to one, +1 to another",
+                "+1 to all three",
+            ]
+            description.update("\n".join(lines))
+            self._refresh_options()
+            options_list.display = True
+            detail_panel.display = False
+            return
+
+        # Step 1+: Apply bonuses based on mode
+        if self.bonus_mode == "spread":
+            # +1/+1/+1 mode - show confirmation
+            lines = [
+                f"Your background ({background_name}) bonuses:",
+                "",
+                "+1 to each of:",
+            ]
+            for opt in options:
+                lines.append(f"  • {opt}")
             lines.append("")
-            lines.append("Select +1 bonus:")
-
-        # Use OptionList for selection
-        if self.ability_selected_index == 0:
-            # Selecting +2
-            self.current_options = options
+            lines.append("Press Next to confirm")
+            description.update("\n".join(lines))
+            options_list.display = False
+            detail_panel.display = False
         else:
-            # Selecting +1 (exclude the +2 choice)
-            self.current_options = [o for o in options if o != self.bonus_plus_2]
+            # +2/+1 split mode
+            lines = [
+                f"Your background ({background_name}) allows:",
+                "  +2 to one ability, +1 to another",
+                "",
+                "\\[C] clear current, \\[X] clear all",
+                "",
+            ]
 
-        description.update("\n".join(lines))
-        self._refresh_options()
-        options_list.display = True
-        detail_panel.display = False
+            # Show selection state
+            if self.ability_selected_index == 1:
+                lines.append("Select +2 bonus:")
+                self.current_options = options
+            else:
+                lines.append(f"+2 bonus: {self.bonus_plus_2 or '--'}")
+                lines.append("")
+                lines.append("Select +1 bonus:")
+                # Exclude the +2 choice
+                self.current_options = [o for o in options if o != self.bonus_plus_2]
+
+            description.update("\n".join(lines))
+            self._refresh_options()
+            options_list.display = True
+            detail_panel.display = False
 
     def _show_bonuses_tov(self) -> None:
         """Display final scores for ToV (no bonuses)."""
@@ -1170,18 +1213,31 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         elif self.ability_sub_step == "bonuses":
             ruleset = self.char_data.get("ruleset", "dnd2024")
             if ruleset == "dnd2024":
-                # Validate bonus selection
                 if self.ability_selected_index == 0:
-                    # Selecting +2 - save and move to +1
+                    # Step 0: Select mode (split vs spread)
+                    if self.selected_option == 0:
+                        self.bonus_mode = "split"
+                        self.ability_selected_index = 1  # Go to +2 selection
+                    else:
+                        self.bonus_mode = "spread"
+                        self.ability_selected_index = 1  # Go to confirmation
+                    self.selected_option = 0
+                    self._show_ability_substep()
+                    return True
+                elif self.bonus_mode == "spread":
+                    # Spread mode confirmation - done
+                    pass  # Fall through to completion
+                elif self.ability_selected_index == 1:
+                    # Split mode: Selecting +2 - save and move to +1
                     if self.current_options and self.selected_option < len(self.current_options):
                         self.bonus_plus_2 = self.current_options[self.selected_option]
-                        self.ability_selected_index = 1
+                        self.ability_selected_index = 2
                         self.selected_option = 0
                         self._show_ability_substep()
                         return True
                     return False
                 else:
-                    # Selecting +1 - save and finish
+                    # Split mode: Selecting +1 - save and finish
                     if self.current_options and self.selected_option < len(self.current_options):
                         self.bonus_plus_1 = self.current_options[self.selected_option]
                     else:
@@ -1210,12 +1266,21 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
         elif self.ability_sub_step == "bonuses":
             ruleset = self.char_data.get("ruleset", "dnd2024")
-            if ruleset == "dnd2024" and self.ability_selected_index == 1:
-                # Go back to +2 selection
-                self.ability_selected_index = 0
-                self.bonus_plus_1 = None
-                self._show_ability_substep()
-                return True
+            if ruleset == "dnd2024":
+                if self.ability_selected_index == 2:
+                    # Go back from +1 selection to +2 selection
+                    self.ability_selected_index = 1
+                    self.bonus_plus_1 = None
+                    self._show_ability_substep()
+                    return True
+                elif self.ability_selected_index == 1:
+                    # Go back from +2/spread confirmation to mode selection
+                    self.ability_selected_index = 0
+                    self.bonus_plus_2 = None
+                    self.bonus_plus_1 = None
+                    self._show_ability_substep()
+                    return True
+                # Index 0 falls through to go back to previous step
 
             if self.ability_method == "point_buy":
                 # Point buy skips assign, go back to generate
@@ -1386,10 +1451,16 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         if ruleset == "dnd2014":
             bonuses = self._get_racial_bonuses()
         elif ruleset == "dnd2024":
-            if self.bonus_plus_2:
-                bonuses[self.bonus_plus_2.lower()] = 2
-            if self.bonus_plus_1:
-                bonuses[self.bonus_plus_1.lower()] = 1
+            if self.bonus_mode == "spread":
+                # +1 to each of the three background abilities
+                for opt in self._get_background_bonus_options():
+                    bonuses[opt.lower()] = 1
+            else:
+                # +2/+1 split
+                if self.bonus_plus_2:
+                    bonuses[self.bonus_plus_2.lower()] = 2
+                if self.bonus_plus_1:
+                    bonuses[self.bonus_plus_1.lower()] = 1
 
         # Create ability scores with bonuses applied
         char.abilities = AbilityScores(
@@ -1548,19 +1619,19 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
         elif self.ability_sub_step == "bonuses":
             ruleset = self.char_data.get("ruleset", "dnd2024")
-            if ruleset == "dnd2024":
+            if ruleset == "dnd2024" and self.bonus_mode == "split":
                 if key.lower() == "c" or key == "backspace":
                     # Clear current bonus selection
-                    if self.ability_selected_index == 1:
-                        # Clear +1 and stay on +1 selection
+                    if self.ability_selected_index == 2:
+                        # Clear +1
                         self.bonus_plus_1 = None
-                    else:
-                        # Clear +2 selection
+                    elif self.ability_selected_index == 1:
+                        # Clear +2
                         self.bonus_plus_2 = None
                     self._show_ability_substep()
                     return True
                 elif key.lower() == "x":
-                    # Clear all bonus selections
+                    # Clear all bonus selections and go back to mode selection
                     self.bonus_plus_2 = None
                     self.bonus_plus_1 = None
                     self.ability_selected_index = 0
