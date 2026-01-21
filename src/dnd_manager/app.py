@@ -730,8 +730,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             options_list = self.query_one("#options-list", VerticalScroll)
             widgets = list(options_list.query(".option-item"))
 
-            # Save scroll position - auto-scroll happens AFTER this function returns
-            saved_scroll = options_list.scroll_y
+            before = options_list.scroll_y
 
             # Update old widget (remove selection)
             if 0 <= old_index < len(widgets):
@@ -745,14 +744,12 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 new_widget.update(f"▶ {self.current_options[new_index]}")
                 new_widget.add_class("selected")
 
-            # Restore scroll AFTER Textual's auto-scroll runs (needs timer, call_after_refresh is too early)
-            def restore_scroll() -> None:
-                before_restore = options_list.scroll_y
-                options_list.scroll_y = saved_scroll
-                with open(log_file, "a") as f:
-                    f.write(f"{datetime.datetime.now()} nav {old_index}→{new_index}: saved={saved_scroll:.1f} before_restore={before_restore:.1f} after_restore={saved_scroll:.1f}\n")
+            after = options_list.scroll_y
 
-            self.set_timer(0.05, restore_scroll)
+            with open(log_file, "a") as f:
+                f.write(f"{datetime.datetime.now()} nav {old_index}→{new_index}: scroll {before:.1f}→{after:.1f} (no intervention)\n")
+
+            # Let Textual's native auto-scroll handle visibility
             self._refresh_details()
         except Exception as e:
             with open(log_file, "a") as f:
