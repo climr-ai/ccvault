@@ -430,8 +430,9 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             ))
 
         # Only scroll on step transitions, not during navigation
+        # Use a small timer delay to ensure layout is fully computed
         if scroll:
-            self.call_after_refresh(self._scroll_to_selection)
+            self.set_timer(0.05, self._scroll_to_selection)
 
         self._refresh_details()
 
