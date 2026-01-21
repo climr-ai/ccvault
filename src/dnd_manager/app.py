@@ -23,6 +23,132 @@ from dnd_manager.data import (
 )
 
 
+class ListNavigationMixin:
+    """Mixin providing standard list navigation: letter jump and center-scroll.
+
+    Subclasses must implement:
+    - _get_list_items() -> list: Return the list of items
+    - _get_item_name(item) -> str: Return the display name for an item
+    - _get_scroll_container() -> VerticalScroll: Return the scrollable container
+    - _update_selection(): Update the visual selection state
+
+    Subclasses should have:
+    - self.selected_index: int tracking current selection
+    - self._last_letter: str tracking last letter pressed (for cycling)
+    - self._last_letter_index: int tracking position in letter matches
+    """
+
+    _last_letter: str = ""
+    _last_letter_index: int = -1
+
+    def _get_list_items(self) -> list:
+        """Override to return the list of items."""
+        return []
+
+    def _get_item_name(self, item) -> str:
+        """Override to return the display name for an item."""
+        return str(item)
+
+    def _get_scroll_container(self):
+        """Override to return the scrollable container widget."""
+        return None
+
+    def _scroll_to_selection(self) -> None:
+        """Scroll the list to keep selection centered."""
+        container = self._get_scroll_container()
+        if container is None:
+            return
+
+        items = self._get_list_items()
+        if not items:
+            return
+
+        # Calculate scroll position to center the selection
+        total_items = len(items)
+        if total_items == 0:
+            return
+
+        # Get container dimensions
+        try:
+            visible_height = container.size.height
+            # Estimate item height (typically 1-2 lines per item)
+            item_height = 1
+            visible_items = max(1, visible_height // item_height)
+
+            # Calculate target scroll to center selection
+            center_offset = visible_items // 2
+            target_line = max(0, self.selected_index - center_offset)
+
+            # Scroll to the target position
+            container.scroll_to(y=target_line * item_height, animate=False)
+        except Exception:
+            # Fallback: just try to scroll the selected item into view
+            pass
+
+    def _navigate_up(self) -> None:
+        """Move selection up with center-scroll."""
+        items = self._get_list_items()
+        if self.selected_index > 0:
+            self.selected_index -= 1
+            self._update_selection()
+            self._scroll_to_selection()
+
+    def _navigate_down(self) -> None:
+        """Move selection down with center-scroll."""
+        items = self._get_list_items()
+        if self.selected_index < len(items) - 1:
+            self.selected_index += 1
+            self._update_selection()
+            self._scroll_to_selection()
+
+    def _jump_to_letter(self, letter: str) -> bool:
+        """Jump to next item starting with letter. Returns True if found."""
+        items = self._get_list_items()
+        if not items:
+            return False
+
+        letter = letter.lower()
+
+        # Find all items starting with this letter
+        matching_indices = []
+        for i, item in enumerate(items):
+            name = self._get_item_name(item).lower()
+            if name.startswith(letter):
+                matching_indices.append(i)
+
+        if not matching_indices:
+            return False
+
+        # If same letter pressed again, cycle to next match
+        if letter == self._last_letter and self._last_letter_index >= 0:
+            # Find next match after current position
+            current_pos = self._last_letter_index
+            next_matches = [i for i in matching_indices if i > self.selected_index]
+            if next_matches:
+                self.selected_index = next_matches[0]
+                self._last_letter_index = matching_indices.index(next_matches[0])
+            else:
+                # Wrap to first match
+                self.selected_index = matching_indices[0]
+                self._last_letter_index = 0
+        else:
+            # New letter - jump to first match
+            self.selected_index = matching_indices[0]
+            self._last_letter = letter
+            self._last_letter_index = 0
+
+        self._update_selection()
+        self._scroll_to_selection()
+        return True
+
+    def _handle_key_for_letter_jump(self, key: str) -> bool:
+        """Handle a key press for letter jumping. Returns True if handled."""
+        # Only handle single letter keys
+        if len(key) == 1 and key.isalpha():
+            return self._jump_to_letter(key)
+        return False
+
+
 class CharacterCreationScreen(Screen):
     """Wizard for creating a new character."""
 
@@ -565,7 +691,7 @@ class CharacterListItem(Static):
         yield Static(f"    {class_info} | {species} | {ruleset}", classes="char-details")
 
 
-class CharacterSelectScreen(Screen):
+class CharacterSelectScreen(ListNavigationMixin, Screen):
     """Screen for selecting a character to load."""
 
     BINDINGS = [
@@ -578,31 +704,49 @@ class CharacterSelectScreen(Screen):
         super().__init__(**kwargs)
         self.characters = characters
         self.selected_index = 0
+        self._last_letter = ""
+        self._last_letter_index = -1
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Container(
             Static("Select a Character", classes="title"),
-            Static("Use ↑/↓ to navigate, Enter to select, Esc to cancel", classes="subtitle"),
-            Vertical(id="character-list"),
+            Static("↑/↓ Navigate  Type to jump  Enter Select  Esc Cancel", classes="subtitle"),
+            VerticalScroll(id="character-list"),
             id="select-container",
         )
         yield Footer()
 
     def on_mount(self) -> None:
         """Populate the character list."""
-        list_container = self.query_one("#character-list")
+        list_container = self.query_one("#character-list", VerticalScroll)
         for i, char_info in enumerate(self.characters):
             item = CharacterListItem(char_info, id=f"char-{i}", classes="char-item")
             if i == 0:
                 item.add_class("selected")
             list_container.mount(item)
 
+    # ListNavigationMixin implementation
+    def _get_list_items(self) -> list:
+        return self.characters
+
+    def _get_item_name(self, item) -> str:
+        return item.get("name", "")
+
+    def _get_scroll_container(self):
+        try:
+            return self.query_one("#character-list", VerticalScroll)
+        except Exception:
+            return None
+
     def _update_selection(self) -> None:
-        """Update the visual selection."""
-        for i, item in enumerate(self.query(".char-item")):
+        """Update the visual selection and scroll into view."""
+        items = list(self.query(".char-item"))
+        for i, item in enumerate(items):
             if i == self.selected_index:
                 item.add_class("selected")
+                # Scroll the selected item into view
+                item.scroll_visible()
             else:
                 item.remove_class("selected")
 
@@ -617,21 +761,22 @@ class CharacterSelectScreen(Screen):
 
     def key_up(self) -> None:
         """Move selection up."""
-        if self.selected_index > 0:
-            self.selected_index -= 1
-            self._update_selection()
+        self._navigate_up()
 
     def key_down(self) -> None:
         """Move selection down."""
-        if self.selected_index < len(self.characters) - 1:
-            self.selected_index += 1
-            self._update_selection()
+        self._navigate_down()
 
     def key_enter(self) -> None:
         """Select the current character."""
         if self.characters:
             char_info = self.characters[self.selected_index]
             self.app.load_character(char_info["path"])
+
+    def on_key(self, event) -> None:
+        """Handle letter keys for jump navigation."""
+        if self._handle_key_for_letter_jump(event.key):
+            event.prevent_default()
 
 
 class AbilityBlock(Static):
@@ -1537,20 +1682,17 @@ class HomebrewChatScreen(Screen):
         self.notify("Chat cleared")
 
 
-class LibraryBrowserScreen(Screen):
+class LibraryBrowserScreen(ListNavigationMixin, Screen):
     """Screen for browsing the CLIMR Homebrew Library."""
 
     BINDINGS = [
         Binding("escape", "back", "Back"),
         Binding("enter", "view", "View Details"),
-        Binding("i", "install", "Install"),
-        Binding("u", "uninstall", "Uninstall"),
-        Binding("r", "rate", "Rate"),
         Binding("/", "search", "Search"),
-        Binding("1", "filter_spells", "Spells"),
-        Binding("2", "filter_items", "Items"),
-        Binding("3", "filter_feats", "Feats"),
-        Binding("0", "filter_all", "All"),
+        Binding("f1", "filter_spells", "Spells"),
+        Binding("f2", "filter_items", "Items"),
+        Binding("f3", "filter_feats", "Feats"),
+        Binding("f4", "filter_all", "All"),
     ]
 
     def __init__(self, **kwargs) -> None:
@@ -1561,6 +1703,8 @@ class LibraryBrowserScreen(Screen):
         self.filter_type: Optional[str] = None
         self.sort_by = "rating"
         self._library = None
+        self._last_letter = ""
+        self._last_letter_index = -1
 
     @property
     def library(self):
@@ -1574,7 +1718,7 @@ class LibraryBrowserScreen(Screen):
         yield Header()
         yield Container(
             Static("CLIMR Homebrew Library", classes="title"),
-            Static("[1-3] Filter  [/] Search  [I]nstall  [R]ate  [Enter] View", classes="subtitle"),
+            Static("↑/↓ Navigate  Type to jump  [/] Search  [F1-F4] Filter", classes="subtitle"),
             Horizontal(
                 Input(placeholder="Search library...", id="lib-search"),
                 Static(id="filter-mode", classes="filter-mode"),
@@ -1717,17 +1861,40 @@ class LibraryBrowserScreen(Screen):
             self.selected_index = 0
             self._load_content()
 
+    # ListNavigationMixin implementation
+    def _get_list_items(self) -> list:
+        return self.items
+
+    def _get_item_name(self, item) -> str:
+        return item.name
+
+    def _get_scroll_container(self):
+        try:
+            return self.query_one("#lib-list", VerticalScroll)
+        except Exception:
+            return None
+
+    def _update_selection(self) -> None:
+        """Update selection - refreshes the list display."""
+        self._refresh_list()
+
     def key_up(self) -> None:
         """Move selection up."""
-        if self.selected_index > 0:
-            self.selected_index -= 1
-            self._refresh_list()
+        self._navigate_up()
 
     def key_down(self) -> None:
         """Move selection down."""
-        if self.selected_index < len(self.items) - 1:
-            self.selected_index += 1
-            self._refresh_list()
+        self._navigate_down()
+
+    def on_key(self, event) -> None:
+        """Handle letter keys for jump navigation."""
+        try:
+            if self.query_one("#lib-search", Input).has_focus:
+                return
+        except Exception:
+            pass
+        if self._handle_key_for_letter_jump(event.key):
+            event.prevent_default()
 
     def action_view(self) -> None:
         """View full details."""
@@ -2747,7 +2914,7 @@ class LevelManagementScreen(Screen):
         self.app.pop_screen()
 
 
-class FeatPickerScreen(Screen):
+class FeatPickerScreen(ListNavigationMixin, Screen):
     """Screen for selecting a feat during level up or character creation."""
 
     BINDINGS = [
@@ -2763,12 +2930,14 @@ class FeatPickerScreen(Screen):
         self.selected_index = 0
         self.search_query = ""
         self.filtered_feats: list = []
+        self._last_letter = ""
+        self._last_letter_index = -1
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Container(
             Static("Select a Feat", classes="title"),
-            Static("↑/↓ Navigate  [Enter] Select  [/] Search  [Esc] Cancel", classes="subtitle"),
+            Static("↑/↓ Navigate  Type to jump  [/] Search  Enter Select", classes="subtitle"),
             Horizontal(
                 Input(placeholder="Search feats...", id="feat-search"),
                 classes="search-row",
@@ -2930,17 +3099,41 @@ class FeatPickerScreen(Screen):
             details_widget.mount(Static(""))
             details_widget.mount(Static(f"  Ability Increase: {feat.ability_increase}", classes="ability-inc"))
 
+    # ListNavigationMixin implementation
+    def _get_list_items(self) -> list:
+        return self.filtered_feats
+
+    def _get_item_name(self, item) -> str:
+        return item.name
+
+    def _get_scroll_container(self):
+        try:
+            return self.query_one("#feat-list", VerticalScroll)
+        except Exception:
+            return None
+
+    def _update_selection(self) -> None:
+        """Update selection - refreshes the list display."""
+        self._refresh_feat_list()
+
     def key_up(self) -> None:
         """Move selection up."""
-        if self.selected_index > 0:
-            self.selected_index -= 1
-            self._refresh_feat_list()
+        self._navigate_up()
 
     def key_down(self) -> None:
         """Move selection down."""
-        if self.selected_index < len(self.filtered_feats) - 1:
-            self.selected_index += 1
-            self._refresh_feat_list()
+        self._navigate_down()
+
+    def on_key(self, event) -> None:
+        """Handle letter keys for jump navigation."""
+        # Don't jump if search input is focused
+        try:
+            if self.query_one("#feat-search", Input).has_focus:
+                return
+        except Exception:
+            pass
+        if self._handle_key_for_letter_jump(event.key):
+            event.prevent_default()
 
     def action_search(self) -> None:
         """Focus the search input."""
@@ -2980,7 +3173,7 @@ class FeatPickerScreen(Screen):
         self.app.pop_screen()
 
 
-class SubclassPickerScreen(Screen):
+class SubclassPickerScreen(ListNavigationMixin, Screen):
     """Screen for selecting a subclass."""
 
     BINDINGS = [
@@ -2994,13 +3187,15 @@ class SubclassPickerScreen(Screen):
         self.on_select = on_select
         self.selected_index = 0
         self.subclasses: list = []
+        self._last_letter = ""
+        self._last_letter_index = -1
 
     def compose(self) -> ComposeResult:
         class_name = self.character.primary_class.name
         yield Header()
         yield Container(
             Static(f"Choose Your {class_name} Subclass", classes="title"),
-            Static("↑/↓ Navigate  [Enter] Select  [Esc] Cancel", classes="subtitle"),
+            Static("↑/↓ Navigate  Type to jump  Enter Select", classes="subtitle"),
             Horizontal(
                 Vertical(
                     Static("AVAILABLE SUBCLASSES", classes="panel-title"),
@@ -3075,17 +3270,35 @@ class SubclassPickerScreen(Screen):
         if len(subclass.features) > 5:
             details_widget.mount(Static(f"    ... and {len(subclass.features) - 5} more", classes="hint"))
 
+    # ListNavigationMixin implementation
+    def _get_list_items(self) -> list:
+        return self.subclasses
+
+    def _get_item_name(self, item) -> str:
+        return item.name
+
+    def _get_scroll_container(self):
+        try:
+            return self.query_one("#subclass-list", VerticalScroll)
+        except Exception:
+            return None
+
+    def _update_selection(self) -> None:
+        """Update selection - refreshes the list display."""
+        self._refresh_subclass_list()
+
     def key_up(self) -> None:
         """Move selection up."""
-        if self.selected_index > 0:
-            self.selected_index -= 1
-            self._refresh_subclass_list()
+        self._navigate_up()
 
     def key_down(self) -> None:
         """Move selection down."""
-        if self.selected_index < len(self.subclasses) - 1:
-            self.selected_index += 1
-            self._refresh_subclass_list()
+        self._navigate_down()
+
+    def on_key(self, event) -> None:
+        """Handle letter keys for jump navigation."""
+        if self._handle_key_for_letter_jump(event.key):
+            event.prevent_default()
 
     def action_select(self) -> None:
         """Select the current subclass."""
@@ -3822,21 +4035,22 @@ class HPEditorScreen(Screen):
         self.app.pop_screen()
 
 
-class InventoryScreen(Screen):
+class InventoryScreen(ListNavigationMixin, Screen):
     """Screen for managing equipment and inventory."""
 
     BINDINGS = [
         Binding("escape", "back", "Back"),
-        Binding("a", "add_item", "Add Item"),
-        Binding("d", "drop_item", "Drop Item"),
-        Binding("e", "equip_toggle", "Equip/Unequip"),
-        Binding("g", "manage_gold", "Manage Gold"),
+        Binding("+", "add_item", "Add Item"),
+        Binding("-", "drop_item", "Drop Item"),
+        Binding("enter", "equip_toggle", "Equip/Unequip"),
     ]
 
     def __init__(self, character: Character, **kwargs) -> None:
         super().__init__(**kwargs)
         self.character = character
         self.selected_index = 0
+        self._last_letter = ""
+        self._last_letter_index = -1
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -3951,37 +4165,54 @@ class InventoryScreen(Screen):
         """Manage currency."""
         self.notify("Currency management coming soon!", severity="information")
 
+    # ListNavigationMixin implementation
+    def _get_list_items(self) -> list:
+        return self.character.equipment.items
+
+    def _get_item_name(self, item) -> str:
+        return item.name
+
+    def _get_scroll_container(self):
+        try:
+            return self.query_one("#equipment-list", VerticalScroll)
+        except Exception:
+            return None
+
+    def _update_selection(self) -> None:
+        """Update selection - refreshes the inventory display."""
+        self._refresh_inventory()
+
     def key_up(self) -> None:
         """Move selection up."""
-        if self.selected_index > 0:
-            self.selected_index -= 1
-            self._refresh_inventory()
+        self._navigate_up()
 
     def key_down(self) -> None:
         """Move selection down."""
-        items = self.character.equipment.items
-        if self.selected_index < len(items) - 1:
-            self.selected_index += 1
-            self._refresh_inventory()
+        self._navigate_down()
+
+    def on_key(self, event) -> None:
+        """Handle letter keys for jump navigation."""
+        if self._handle_key_for_letter_jump(event.key):
+            event.prevent_default()
 
     def action_back(self) -> None:
         """Return to dashboard."""
         self.app.pop_screen()
 
 
-class MagicItemBrowserScreen(Screen):
+class MagicItemBrowserScreen(ListNavigationMixin, Screen):
     """Screen for browsing and adding magic items from the SRD."""
 
     BINDINGS = [
         Binding("escape", "back", "Back"),
         Binding("enter", "add_item", "Add to Inventory"),
         Binding("/", "search", "Search"),
-        Binding("1", "filter_common", "Common"),
-        Binding("2", "filter_uncommon", "Uncommon"),
-        Binding("3", "filter_rare", "Rare"),
-        Binding("4", "filter_very_rare", "Very Rare"),
-        Binding("5", "filter_legendary", "Legendary"),
-        Binding("0", "filter_all", "All Rarities"),
+        Binding("6", "filter_common", "Common"),
+        Binding("7", "filter_uncommon", "Uncommon"),
+        Binding("8", "filter_rare", "Rare"),
+        Binding("9", "filter_very_rare", "Very Rare"),
+        Binding("0", "filter_legendary", "Legendary"),
+        Binding("-", "filter_all", "All Rarities"),
     ]
 
     def __init__(self, character: Character, **kwargs) -> None:
@@ -3991,12 +4222,14 @@ class MagicItemBrowserScreen(Screen):
         self.search_query = ""
         self.rarity_filter: str | None = None
         self.filtered_items: list = []
+        self._last_letter = ""
+        self._last_letter_index = -1
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Container(
             Static("Magic Item Browser", classes="title"),
-            Static("↑/↓ Select  [Enter] Add  [/] Search  [1-5] Filter by Rarity  [0] All", classes="subtitle"),
+            Static("↑/↓ Navigate  Type to jump  [/] Search  [6-0] Rarity  [-] All", classes="subtitle"),
             Horizontal(
                 Input(placeholder="Search magic items...", id="item-search"),
                 classes="search-row",
@@ -4133,17 +4366,40 @@ class MagicItemBrowserScreen(Screen):
             details_widget.mount(Static(""))
             details_widget.mount(Static(f"  Charges: {item.charges}", classes="charges-info"))
 
+    # ListNavigationMixin implementation
+    def _get_list_items(self) -> list:
+        return self.filtered_items
+
+    def _get_item_name(self, item) -> str:
+        return item.name
+
+    def _get_scroll_container(self):
+        try:
+            return self.query_one("#item-list", VerticalScroll)
+        except Exception:
+            return None
+
+    def _update_selection(self) -> None:
+        """Update selection - refreshes the list display."""
+        self._refresh_item_list()
+
     def key_up(self) -> None:
         """Move selection up."""
-        if self.selected_index > 0:
-            self.selected_index -= 1
-            self._refresh_item_list()
+        self._navigate_up()
 
     def key_down(self) -> None:
         """Move selection down."""
-        if self.selected_index < len(self.filtered_items) - 1:
-            self.selected_index += 1
-            self._refresh_item_list()
+        self._navigate_down()
+
+    def on_key(self, event) -> None:
+        """Handle letter keys for jump navigation."""
+        try:
+            if self.query_one("#item-search", Input).has_focus:
+                return
+        except Exception:
+            pass
+        if self._handle_key_for_letter_jump(event.key):
+            event.prevent_default()
 
     def action_search(self) -> None:
         """Focus the search input."""
@@ -4398,7 +4654,7 @@ class FeaturesScreen(Screen):
         self.app.pop_screen()
 
 
-class SpellBrowserScreen(Screen):
+class SpellBrowserScreen(ListNavigationMixin, Screen):
     """Screen for browsing and adding SRD spells."""
 
     BINDINGS = [
@@ -4414,12 +4670,14 @@ class SpellBrowserScreen(Screen):
         self.selected_index = 0
         self.filtered_spells: list = []
         self.search_query = ""
+        self._last_letter = ""
+        self._last_letter_index = -1
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Container(
             Static("Spell Browser - Add Spells", classes="title"),
-            Static("↑/↓ Select  [Enter] Add  [/] Search  [Esc] Back", classes="subtitle"),
+            Static("↑/↓ Navigate  Type to jump  [/] Search  Enter Add", classes="subtitle"),
             Horizontal(
                 Input(placeholder="Search spells...", id="spell-search"),
                 classes="search-row",
@@ -4536,21 +4794,44 @@ class SpellBrowserScreen(Screen):
             self.selected_index = 0
             self._refresh_list()
 
-    def key_up(self) -> None:
-        """Move selection up."""
-        if self.selected_index > 0:
-            self.selected_index -= 1
-            self._refresh_list()
-
-    def key_down(self) -> None:
-        """Move selection down."""
+    # ListNavigationMixin implementation
+    def _get_list_items(self) -> list:
         spells = self.filtered_spells
         if self.search_query:
             query = self.search_query.lower()
             spells = [s for s in spells if query in s.name.lower()]
-        if self.selected_index < len(spells) - 1:
-            self.selected_index += 1
-            self._refresh_list()
+        return spells
+
+    def _get_item_name(self, item) -> str:
+        return item.name
+
+    def _get_scroll_container(self):
+        try:
+            return self.query_one("#spell-list", VerticalScroll)
+        except Exception:
+            return None
+
+    def _update_selection(self) -> None:
+        """Update selection - refreshes the list display."""
+        self._refresh_list()
+
+    def key_up(self) -> None:
+        """Move selection up."""
+        self._navigate_up()
+
+    def key_down(self) -> None:
+        """Move selection down."""
+        self._navigate_down()
+
+    def on_key(self, event) -> None:
+        """Handle letter keys for jump navigation."""
+        try:
+            if self.query_one("#spell-search", Input).has_focus:
+                return
+        except Exception:
+            pass
+        if self._handle_key_for_letter_jump(event.key):
+            event.prevent_default()
 
     def action_add_spell(self) -> None:
         """Add the selected spell to the character."""
@@ -4919,16 +5200,15 @@ class NotesScreen(Screen):
         self.app.pop_screen()
 
 
-class SessionNotesScreen(Screen):
+class SessionNotesScreen(ListNavigationMixin, Screen):
     """Screen for managing session notes with vector search."""
 
     BINDINGS = [
         Binding("escape", "back", "Back"),
-        Binding("n", "new_note", "New Note"),
-        Binding("e", "edit_note", "Edit Note"),
-        Binding("d", "delete_note", "Delete Note"),
+        Binding("enter", "edit_note", "Edit Note"),
+        Binding("+", "new_note", "New Note"),
+        Binding("-", "delete_note", "Delete Note"),
         Binding("/", "search", "Search"),
-        Binding("s", "toggle_semantic", "Toggle Semantic"),
     ]
 
     def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
@@ -4939,6 +5219,8 @@ class SessionNotesScreen(Screen):
         self.search_query = ""
         self.use_semantic = True
         self._store = None
+        self._last_letter = ""
+        self._last_letter_index = -1
 
     @property
     def store(self):
@@ -5065,17 +5347,40 @@ class SessionNotesScreen(Screen):
             self.selected_index = 0
             self._load_notes()
 
+    # ListNavigationMixin implementation
+    def _get_list_items(self) -> list:
+        return self.notes
+
+    def _get_item_name(self, item) -> str:
+        return item.title or ""
+
+    def _get_scroll_container(self):
+        try:
+            return self.query_one("#notes-list", VerticalScroll)
+        except Exception:
+            return None
+
+    def _update_selection(self) -> None:
+        """Update selection - refreshes the list display."""
+        self._refresh_list()
+
     def key_up(self) -> None:
         """Move selection up."""
-        if self.selected_index > 0:
-            self.selected_index -= 1
-            self._refresh_list()
+        self._navigate_up()
 
     def key_down(self) -> None:
         """Move selection down."""
-        if self.selected_index < len(self.notes) - 1:
-            self.selected_index += 1
-            self._refresh_list()
+        self._navigate_down()
+
+    def on_key(self, event) -> None:
+        """Handle letter keys for jump navigation."""
+        try:
+            if self.query_one("#notes-search", Input).has_focus:
+                return
+        except Exception:
+            pass
+        if self._handle_key_for_letter_jump(event.key):
+            event.prevent_default()
 
     async def action_new_note(self) -> None:
         """Create a new note."""
