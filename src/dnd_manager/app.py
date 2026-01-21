@@ -407,22 +407,40 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             options_list.display = True
             description.update("")
 
-    def _refresh_options(self) -> None:
-        """Refresh the options list display."""
-        options_list = self.query_one("#options-list", VerticalScroll)
-        options_list.remove_children()
+    def _refresh_options(self, rebuild: bool = True) -> None:
+        """Refresh the options list display.
 
-        for i, option in enumerate(self.current_options):
-            selected = "▶ " if i == self.selected_option else "  "
-            options_list.mount(ClickableListItem(
-                f"{selected}{option}",
-                index=i,
-                classes=f"option-item {'selected' if i == self.selected_option else ''}",
-            ))
+        Args:
+            rebuild: If True, remount all widgets. If False, just update selection visuals.
+        """
+        options_list = self.query_one("#options-list", VerticalScroll)
+
+        if rebuild:
+            options_list.remove_children()
+            for i, option in enumerate(self.current_options):
+                selected = "▶ " if i == self.selected_option else "  "
+                options_list.mount(ClickableListItem(
+                    f"{selected}{option}",
+                    index=i,
+                    classes=f"option-item {'selected' if i == self.selected_option else ''}",
+                ))
+            self.call_after_refresh(self._scroll_to_selection)
+        else:
+            # Just update selection visuals without remounting
+            widgets = list(options_list.query(".option-item"))
+            for i, widget in enumerate(widgets):
+                if i < len(self.current_options):
+                    selected = "▶ " if i == self.selected_option else "  "
+                    widget.update(f"{selected}{self.current_options[i]}")
+                    if i == self.selected_option:
+                        widget.add_class("selected")
+                    else:
+                        widget.remove_class("selected")
+            # Scroll to keep selection visible
+            if self.selected_option < len(widgets):
+                widgets[self.selected_option].scroll_visible(animate=False)
 
         self._refresh_details()
-        # Defer scroll to after layout is complete
-        self.call_after_refresh(self._scroll_to_selection)
 
     def _refresh_details(self) -> None:
         """Update the detail panel with information about the selected option."""
@@ -843,13 +861,13 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         """Select previous option."""
         if self.current_options and self.selected_option > 0:
             self.selected_option -= 1
-            self._refresh_options()
+            self._refresh_options(rebuild=False)
 
     def action_next_option(self) -> None:
         """Select next option."""
         if self.current_options and self.selected_option < len(self.current_options) - 1:
             self.selected_option += 1
-            self._refresh_options()
+            self._refresh_options(rebuild=False)
 
     def key_up(self) -> None:
         """Move selection up."""
@@ -871,7 +889,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         """Handle mouse click on a list item."""
         if 0 <= event.index < len(self.current_options):
             self.selected_option = event.index
-            self._refresh_options()
+            self._refresh_options(rebuild=False)
 
     def action_cancel(self) -> None:
         """Cancel character creation - draft is auto-saved for resume."""
