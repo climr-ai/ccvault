@@ -6798,13 +6798,12 @@ class SettingsScreen(Screen):
 
 
 def _get_app_version() -> str:
-    """Get the application version from package metadata or config."""
+    """Get the application version from package metadata."""
     try:
         from importlib.metadata import version
-        return version("dnd-manager")
+        return version("ccvault")
     except Exception:
-        # Fallback to config version
-        return get_config_manager().config.versions.app_version
+        return "dev"
 
 
 class DNDManagerApp(App):
