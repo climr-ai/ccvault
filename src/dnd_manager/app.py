@@ -20,6 +20,9 @@ from dnd_manager.data import (
     get_subraces,
     get_origin_feats,
     get_all_background_names,
+    get_background,
+    get_class_info,
+    get_feat,
 )
 
 
@@ -221,12 +224,21 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         yield Container(
             Static("Create New Character", classes="title"),
             Static(id="step-indicator", classes="subtitle"),
-            Vertical(
-                Static(id="step-title", classes="panel-title"),
-                Input(placeholder="Enter name...", id="name-input"),
-                VerticalScroll(id="options-list", classes="options-list"),
-                Static(id="step-description"),
-                classes="panel creation-panel",
+            Horizontal(
+                Vertical(
+                    Static(id="step-title", classes="panel-title"),
+                    Input(placeholder="Enter name...", id="name-input"),
+                    VerticalScroll(id="options-list", classes="options-list"),
+                    Static(id="step-description"),
+                    classes="panel creation-panel creation-left",
+                ),
+                VerticalScroll(
+                    Static(id="detail-title", classes="panel-title"),
+                    Static(id="detail-content"),
+                    id="detail-panel",
+                    classes="panel creation-panel creation-right",
+                ),
+                classes="creation-row",
             ),
             Horizontal(
                 Button("Cancel", id="btn-cancel", variant="error"),
@@ -378,6 +390,217 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             ))
 
         self._scroll_to_selection()
+        self._refresh_details()
+
+    def _refresh_details(self) -> None:
+        """Update the detail panel with information about the selected option."""
+        try:
+            detail_title = self.query_one("#detail-title", Static)
+            detail_content = self.query_one("#detail-content", Static)
+            detail_panel = self.query_one("#detail-panel", VerticalScroll)
+        except Exception:
+            return
+
+        step_name = self.steps[self.step] if self.step < len(self.steps) else ""
+
+        # Hide detail panel on steps without options
+        if step_name in ("name", "abilities", "confirm"):
+            detail_panel.display = False
+            return
+
+        detail_panel.display = True
+
+        if not self.current_options or self.selected_option >= len(self.current_options):
+            detail_title.update("")
+            detail_content.update("Select an option to see details")
+            return
+
+        selected_name = self.current_options[self.selected_option]
+
+        if step_name == "class":
+            self._show_class_details(selected_name, detail_title, detail_content)
+        elif step_name == "species":
+            self._show_species_details(selected_name, detail_title, detail_content)
+        elif step_name == "subspecies":
+            self._show_subspecies_details(selected_name, detail_title, detail_content)
+        elif step_name == "background":
+            self._show_background_details(selected_name, detail_title, detail_content)
+        elif step_name == "origin_feat":
+            self._show_feat_details(selected_name, detail_title, detail_content)
+        else:
+            detail_title.update(selected_name)
+            detail_content.update("")
+
+    def _show_class_details(self, class_name: str, title: Static, content: Static) -> None:
+        """Show details for a class."""
+        class_info = get_class_info(class_name)
+        if not class_info:
+            title.update(class_name)
+            content.update("No details available")
+            return
+
+        title.update(f"⚔️ {class_name}")
+
+        lines = []
+        lines.append(f"Hit Die: {class_info.hit_die}")
+        lines.append(f"Primary Ability: {class_info.primary_ability}")
+        lines.append(f"Saves: {', '.join(class_info.saving_throws)}")
+        lines.append("")
+        lines.append("PROFICIENCIES")
+        lines.append(f"  Armor: {', '.join(class_info.armor_proficiencies) or 'None'}")
+        lines.append(f"  Weapons: {', '.join(class_info.weapon_proficiencies)}")
+        lines.append(f"  Skills: Choose {class_info.skill_choices} from:")
+        lines.append(f"    {', '.join(class_info.skill_options)}")
+
+        if class_info.spellcasting_ability:
+            lines.append("")
+            lines.append(f"Spellcasting: {class_info.spellcasting_ability}")
+
+        # Show level 1 features
+        level_1_features = [f for f in class_info.features if f.level == 1]
+        if level_1_features:
+            lines.append("")
+            lines.append("LEVEL 1 FEATURES")
+            for feat in level_1_features:
+                lines.append(f"  • {feat.name}")
+
+        content.update("\n".join(lines))
+
+    def _show_species_details(self, species_name: str, title: Static, content: Static) -> None:
+        """Show details for a species."""
+        species = get_species(species_name)
+        if not species:
+            title.update(species_name)
+            content.update("No details available")
+            return
+
+        title.update(f"🧬 {species_name}")
+
+        lines = []
+        lines.append(species.description)
+        lines.append("")
+        lines.append(f"Size: {species.size}")
+        lines.append(f"Speed: {species.speed} ft.")
+        if species.darkvision:
+            lines.append(f"Darkvision: {species.darkvision} ft.")
+        lines.append(f"Languages: {', '.join(species.languages)}")
+
+        if species.traits:
+            lines.append("")
+            lines.append("RACIAL TRAITS")
+            for trait in species.traits:
+                lines.append(f"  • {trait.name}")
+                # Wrap long descriptions
+                if len(trait.description) > 60:
+                    lines.append(f"    {trait.description[:60]}...")
+                else:
+                    lines.append(f"    {trait.description}")
+
+        if species.subraces:
+            lines.append("")
+            lines.append(f"Subraces: {', '.join(sr.name for sr in species.subraces)}")
+
+        content.update("\n".join(lines))
+
+    def _show_subspecies_details(self, subrace_name: str, title: Static, content: Static) -> None:
+        """Show details for a subspecies."""
+        species_name = self.char_data.get("species", "")
+        species = get_species(species_name)
+        if not species:
+            title.update(subrace_name)
+            content.update("No details available")
+            return
+
+        subrace = next((sr for sr in species.subraces if sr.name == subrace_name), None)
+        if not subrace:
+            title.update(subrace_name)
+            content.update("No details available")
+            return
+
+        title.update(f"🧬 {subrace_name}")
+
+        lines = []
+        lines.append(subrace.description)
+
+        if subrace.ability_bonuses:
+            lines.append("")
+            bonuses = [f"+{v} {k}" for k, v in subrace.ability_bonuses.items()]
+            lines.append(f"Ability Bonuses: {', '.join(bonuses)}")
+
+        if subrace.traits:
+            lines.append("")
+            lines.append("SUBRACE TRAITS")
+            for trait in subrace.traits:
+                lines.append(f"  • {trait.name}")
+                lines.append(f"    {trait.description}")
+
+        content.update("\n".join(lines))
+
+    def _show_background_details(self, bg_name: str, title: Static, content: Static) -> None:
+        """Show details for a background."""
+        background = get_background(bg_name)
+        if not background:
+            title.update(bg_name)
+            content.update("No details available")
+            return
+
+        title.update(f"📜 {bg_name}")
+
+        lines = []
+        lines.append(background.description)
+        lines.append("")
+        lines.append("PROFICIENCIES")
+        lines.append(f"  Skills: {', '.join(background.skill_proficiencies)}")
+        if background.tool_proficiencies:
+            lines.append(f"  Tools: {', '.join(background.tool_proficiencies)}")
+        if background.languages:
+            lines.append(f"  Languages: {background.languages} of your choice")
+
+        if background.equipment:
+            lines.append("")
+            lines.append("EQUIPMENT")
+            for item in background.equipment:
+                lines.append(f"  • {item}")
+
+        if background.feature:
+            lines.append("")
+            lines.append(f"FEATURE: {background.feature.name}")
+            lines.append(f"  {background.feature.description}")
+
+        if background.origin_feat:
+            lines.append("")
+            lines.append(f"ORIGIN FEAT: {background.origin_feat}")
+
+        if background.ability_score_options:
+            lines.append("")
+            lines.append(f"Ability Options: {', '.join(background.ability_score_options)}")
+
+        content.update("\n".join(lines))
+
+    def _show_feat_details(self, feat_name: str, title: Static, content: Static) -> None:
+        """Show details for a feat."""
+        feat = get_feat(feat_name)
+        if not feat:
+            title.update(feat_name)
+            content.update("No details available")
+            return
+
+        title.update(f"✨ {feat_name}")
+
+        lines = []
+        lines.append(feat.description)
+
+        if feat.prerequisite:
+            lines.append("")
+            lines.append(f"Prerequisite: {feat.prerequisite}")
+
+        if feat.benefits:
+            lines.append("")
+            lines.append("BENEFITS")
+            for benefit in feat.benefits:
+                lines.append(f"  • {benefit}")
+
+        content.update("\n".join(lines))
 
     # ListNavigationMixin implementation
     @property
