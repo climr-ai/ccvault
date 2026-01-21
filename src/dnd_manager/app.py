@@ -858,7 +858,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         title.update(f"ABILITY SCORES - Point Buy ({remaining}/{POINT_BUY_TOTAL} points)")
 
         # Build display of current scores
-        lines = ["Use ←→ to adjust selected ability (8-15)", ""]
+        lines = ["←→ adjust (8-15), \\[X] reset all to 8", ""]
         for i, ability in enumerate(ABILITIES):
             score = self.point_buy_scores[ability]
             cost = POINT_BUY_COSTS.get(score, 0)
@@ -879,7 +879,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
         title.update("ABILITY SCORES - Roll 4d6 Drop Lowest")
 
-        lines = ["[R] Roll next  [A] Roll all  [C] Clear all", ""]
+        lines = ["\\[R] Roll next  \\[A] Roll all  \\[C] Clear all", ""]
 
         for i in range(6):
             if i < len(self.roll_results):
@@ -917,7 +917,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 scores_display.append(f" {score} ")  # Available
         scores_line = " ".join(scores_display)
 
-        lines = [f"Scores: {scores_line}", "", "Use ←→ to cycle scores, Enter to confirm assignment", ""]
+        lines = [f"Scores: {scores_line}", "", "←→ cycle scores, \\[C] clear current, \\[X] clear all", ""]
 
         for i, ability in enumerate(ABILITIES):
             abbrev = ABILITY_ABBREV[ability]
@@ -1002,7 +1002,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             # Default to all abilities if no specific options
             options = [a.title() for a in ABILITIES]
 
-        lines = [f"Your background ({background_name}) allows:", "  +2 to one ability, +1 to another", ""]
+        lines = [f"Your background ({background_name}) allows:", "  +2 to one ability, +1 to another", "", "\\[C] clear current, \\[X] clear all", ""]
 
         # Show selection state
         if self.ability_selected_index == 0:
@@ -1494,6 +1494,11 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 elif key == "right":
                     self._adjust_point_buy(1)
                     return True
+                elif key.lower() == "x":
+                    # Reset all to 8
+                    self.point_buy_scores = {a: 8 for a in ABILITIES}
+                    self._show_generate_point_buy()
+                    return True
 
             elif self.ability_method == "roll":
                 if key.lower() == "r":
@@ -1528,12 +1533,39 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 # Cycle through available scores for current ability
                 self._cycle_assignment(1 if key == "right" else -1)
                 return True
-            elif key.lower() == "c":
-                # Clear assignment
+            elif key.lower() == "c" or key == "backspace":
+                # Clear current assignment
                 ability = ABILITIES[self.ability_selected_index]
                 self.score_assignments[ability] = None
                 self._show_ability_assign()
                 return True
+            elif key.lower() == "x":
+                # Clear all assignments
+                for ability in ABILITIES:
+                    self.score_assignments[ability] = None
+                self._show_ability_assign()
+                return True
+
+        elif self.ability_sub_step == "bonuses":
+            ruleset = self.char_data.get("ruleset", "dnd2024")
+            if ruleset == "dnd2024":
+                if key.lower() == "c" or key == "backspace":
+                    # Clear current bonus selection
+                    if self.ability_selected_index == 1:
+                        # Clear +1 and stay on +1 selection
+                        self.bonus_plus_1 = None
+                    else:
+                        # Clear +2 selection
+                        self.bonus_plus_2 = None
+                    self._show_ability_substep()
+                    return True
+                elif key.lower() == "x":
+                    # Clear all bonus selections
+                    self.bonus_plus_2 = None
+                    self.bonus_plus_1 = None
+                    self.ability_selected_index = 0
+                    self._show_ability_substep()
+                    return True
 
         return False
 
