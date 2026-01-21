@@ -440,9 +440,8 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                         widget.add_class("selected")
                     else:
                         widget.remove_class("selected")
-            # Scroll to center the selection
-            if self.selected_option < len(widgets):
-                options_list.scroll_to_center(widgets[self.selected_option], animate=False)
+            # Scroll after layout updates
+            self.call_after_refresh(self._scroll_to_selection)
 
         self._refresh_details()
 
