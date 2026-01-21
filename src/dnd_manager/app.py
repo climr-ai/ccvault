@@ -26,6 +26,7 @@ from dnd_manager.data import (
     get_class_info,
     get_feat,
 )
+from dnd_manager.data.backgrounds import get_origin_feat_for_background
 
 
 class ClickableListItem(Static):
@@ -375,11 +376,16 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             self._refresh_options()
 
         elif step_name == "origin_feat":
-            title.update("CHOOSE ORIGIN FEAT")
-            description.update("Select a feat granted by your background (2024 rules)")
-            # Get origin feats from data module
-            origin_feats = get_origin_feats()
-            self.current_options = [f.name for f in origin_feats]
+            title.update("ORIGIN FEAT")
+            # Get the specific origin feat for the selected background
+            background_name = self.char_data.get("background", "")
+            origin_feat = get_origin_feat_for_background(background_name)
+            if origin_feat:
+                description.update(f"Your background ({background_name}) grants this feat:")
+                self.current_options = [origin_feat.name]
+            else:
+                description.update("No origin feat for this background")
+                self.current_options = []
             self._refresh_options()
 
         elif step_name == "abilities":
