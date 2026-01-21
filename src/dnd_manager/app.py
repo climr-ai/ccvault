@@ -723,6 +723,9 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
     def _update_selection_visual(self, old_index: int, new_index: int) -> None:
         """Update just the two widgets that changed during navigation."""
+        import datetime
+        log_file = "/tmp/dnd_scroll_debug.log"
+
         try:
             options_list = self.query_one("#options-list", VerticalScroll)
             widgets = list(options_list.query(".option-item"))
@@ -742,16 +745,26 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 new_widget.update(f"▶ {self.current_options[new_index]}")
                 new_widget.add_class("selected")
 
+            after_update = options_list.scroll_y
+
             # Restore scroll position (undo auto-scroll from update())
             options_list.scroll_y = saved_scroll
+
+            after_restore = options_list.scroll_y
 
             # Now apply our own scroll - just ensure visible, don't center
             if 0 <= new_index < len(widgets):
                 widgets[new_index].scroll_visible(animate=False)
 
+            final = options_list.scroll_y
+
+            with open(log_file, "a") as f:
+                f.write(f"{datetime.datetime.now()} nav {old_index}→{new_index}: saved={saved_scroll:.1f} after_update={after_update:.1f} after_restore={after_restore:.1f} final={final:.1f}\n")
+
             self._refresh_details()
-        except Exception:
-            pass
+        except Exception as e:
+            with open(log_file, "a") as f:
+                f.write(f"ERROR: {e}\n")
 
     def _update_selection(self) -> None:
         self._refresh_options()
