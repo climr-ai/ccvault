@@ -678,6 +678,11 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             lines.append(f"Darkvision: {species.darkvision} ft.")
         lines.append(f"Languages: {', '.join(species.languages)}")
 
+        # Only show ability bonuses for 2014 ruleset (2024 uses background bonuses)
+        if ruleset == "dnd2014" and species.ability_bonuses:
+            bonuses = [f"+{v} {k}" for k, v in species.ability_bonuses.items()]
+            lines.append(f"Ability Bonuses: {', '.join(bonuses)}")
+
         if species.traits:
             lines.append("")
             lines.append("RACIAL TRAITS")
@@ -711,7 +716,9 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         lines = []
         lines.append(subsp.description)
 
-        if subsp.ability_bonuses:
+        # Only show ability bonuses for 2014 ruleset (2024 uses background bonuses)
+        ruleset = self.char_data.get("ruleset", "dnd2024")
+        if ruleset == "dnd2014" and subsp.ability_bonuses:
             lines.append("")
             bonuses = [f"+{v} {k}" for k, v in subsp.ability_bonuses.items()]
             lines.append(f"Ability Bonuses: {', '.join(bonuses)}")
