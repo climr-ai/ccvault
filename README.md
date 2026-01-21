@@ -298,6 +298,18 @@ pytest -v
 pytest tests/test_dice.py::TestDiceRoller::test_advantage
 ```
 
+## Versioning
+
+CCVault uses semantic versioning: `MAJOR.MINOR.PATCH`
+
+- **0.x.y** - Pre-release development (current)
+- **MINOR (x)** - New features or significant changes
+- **PATCH (y)** - Bug fixes, incremented with each code push
+
+Current version: **0.1.1**
+
+Check your version: The version is displayed on the welcome screen (e.g., "v0.1.1").
+
 ## License
 
 MIT
