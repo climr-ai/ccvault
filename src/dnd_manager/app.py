@@ -742,11 +742,14 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 new_widget.update(f"▶ {self.current_options[new_index]}")
                 new_widget.add_class("selected")
                 # Scroll into view if needed
+                before_y = options_list.scroll_y
                 new_widget.scroll_visible(animate=False)
+                after_y = options_list.scroll_y
+                self.notify(f"nav {new_index}: scroll {before_y:.0f}→{after_y:.0f} max={options_list.max_scroll_y:.0f}")
 
             self._refresh_details()
-        except Exception:
-            pass
+        except Exception as e:
+            self.notify(f"Error: {e}")
 
     def _update_selection(self) -> None:
         self._refresh_options()
