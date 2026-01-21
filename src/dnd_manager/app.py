@@ -745,7 +745,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 new_widget.update(f"▶ {self.current_options[new_index]}")
                 new_widget.add_class("selected")
 
-            # Restore scroll AFTER Textual's auto-scroll runs
+            # Restore scroll AFTER Textual's auto-scroll runs (needs timer, call_after_refresh is too early)
             def restore_scroll() -> None:
                 before_restore = options_list.scroll_y
                 options_list.scroll_y = saved_scroll
@@ -756,7 +756,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 with open(log_file, "a") as f:
                     f.write(f"{datetime.datetime.now()} nav {old_index}→{new_index}: saved={saved_scroll:.1f} before_restore={before_restore:.1f} after_restore={after_restore:.1f} final={final:.1f}\n")
 
-            self.call_after_refresh(restore_scroll)
+            self.set_timer(0.02, restore_scroll)
             self._refresh_details()
         except Exception as e:
             with open(log_file, "a") as f:
