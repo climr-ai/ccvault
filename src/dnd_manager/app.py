@@ -185,6 +185,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         Binding("enter", "next", "Next/Confirm"),
         Binding("left", "prev_option", "Previous"),
         Binding("right", "next_option", "Next"),
+        Binding("?", "ai_help", "AI Help"),
     ]
 
     def __init__(self, draft_data: Optional[dict] = None, **kwargs) -> None:
@@ -2266,6 +2267,38 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         self.notify("Progress saved - you can resume anytime")
         self.app.pop_screen()
 
+    def action_ai_help(self) -> None:
+        """Open AI assistant for help with character creation."""
+        # Build context about current step
+        step_name = self.steps[self.step] if self.step < len(self.steps) else "unknown"
+        step_context = {
+            "ruleset": "choosing which D&D ruleset to use",
+            "name": "choosing a character name",
+            "class": "choosing a class",
+            "species": "choosing a species/race",
+            "subspecies": "choosing a subspecies/subrace",
+            "species_feat": "choosing a bonus feat",
+            "background": "choosing a background",
+            "origin_feat": "choosing an origin feat",
+            "abilities": "assigning ability scores",
+            "skills": "choosing skill proficiencies",
+            "spells": "selecting cantrips and spells",
+            "confirm": "reviewing their character",
+        }
+        context = step_context.get(step_name, "creating a character")
+
+        # Include current selections for context
+        current_info = []
+        if self.char_data.get("class"):
+            current_info.append(f"Class: {self.char_data['class']}")
+        if self.char_data.get("species"):
+            current_info.append(f"Species: {self.char_data['species']}")
+
+        info_str = f" ({', '.join(current_info)})" if current_info else ""
+
+        self.app.push_screen(AIChatScreen(character=None, mode="assistant"))
+        self.notify(f"AI Help - Currently {context}{info_str}")
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handle Enter key in input fields - proceed to next step."""
         if event.input.id == "name-input":
@@ -2279,6 +2312,7 @@ class WelcomeScreen(Screen):
         Binding("n", "new_character", "New Character"),
         Binding("o", "open_character", "Open Character"),
         Binding("r", "resume_draft", "Resume Draft", show=False),
+        Binding("a", "ai_chat", "AI Chat"),
         Binding("q", "quit", "Quit"),
         Binding("left", "prev_button", "Previous", show=False),
         Binding("right", "next_button", "Next", show=False),
@@ -2288,7 +2322,7 @@ class WelcomeScreen(Screen):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self.selected_index = 0
-        self.button_ids = ["btn-new", "btn-open", "btn-quit"]
+        self.button_ids = ["btn-new", "btn-open", "btn-ai", "btn-quit"]
         self._draft_store = None
         self._has_draft = False
 
@@ -2319,6 +2353,7 @@ class WelcomeScreen(Screen):
                 Button("New Character", id="btn-new", variant="primary"),
                 Button("Resume Draft", id="btn-resume", variant="success"),
                 Button("Open Character", id="btn-open", variant="default"),
+                Button("AI Assistant", id="btn-ai", variant="warning"),
                 Button("Quit", id="btn-quit", variant="error"),
                 classes="button-row",
             ),
@@ -2380,6 +2415,8 @@ class WelcomeScreen(Screen):
             self.action_resume_draft()
         elif btn_id == "btn-open":
             self.action_open_character()
+        elif btn_id == "btn-ai":
+            self.action_ai_chat()
         elif btn_id == "btn-quit":
             self.action_quit()
 
@@ -2407,6 +2444,10 @@ class WelcomeScreen(Screen):
         """Quit the application."""
         self.app.exit()
 
+    def action_ai_chat(self) -> None:
+        """Open AI chat without a character (general D&D help)."""
+        self.app.push_screen(AIChatScreen(character=None, mode="assistant"))
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "btn-new":
@@ -2415,6 +2456,8 @@ class WelcomeScreen(Screen):
             self.action_resume_draft()
         elif event.button.id == "btn-open":
             self.action_open_character()
+        elif event.button.id == "btn-ai":
+            self.action_ai_chat()
         elif event.button.id == "btn-quit":
             self.action_quit()
 
