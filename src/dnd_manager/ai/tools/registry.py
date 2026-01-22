@@ -50,6 +50,7 @@ class ToolRegistry:
             inventory_tools,
             custom_tools,
             ruleset_tools,
+            creation_tools,
         )
         from dnd_manager.ai.tools.handlers import (
             query_handlers,
@@ -59,6 +60,7 @@ class ToolRegistry:
             inventory_handlers,
             custom_handlers,
             ruleset_handlers,
+            creation_handlers,
         )
 
         # Register query tools
@@ -116,6 +118,23 @@ class ToolRegistry:
         self.register(ruleset_tools.LOOKUP_MONSTER, ruleset_handlers.handle_lookup_monster)
         self.register(ruleset_tools.SEARCH_MONSTERS, ruleset_handlers.handle_search_monsters)
         self.register(ruleset_tools.GET_ENCOUNTER_MONSTERS, ruleset_handlers.handle_get_encounter_monsters)
+
+        # Register character creation tools
+        self.register(creation_tools.CREATE_CHARACTER, creation_handlers.create_character)
+        self.register(creation_tools.SET_CHARACTER_NAME, creation_handlers.set_character_name)
+        self.register(creation_tools.SET_CHARACTER_CLASS, creation_handlers.set_character_class)
+        self.register(creation_tools.SET_CHARACTER_SPECIES, creation_handlers.set_character_species)
+        self.register(creation_tools.SET_CHARACTER_BACKGROUND, creation_handlers.set_character_background)
+        self.register(creation_tools.ASSIGN_ABILITY_SCORES, creation_handlers.assign_ability_scores)
+        self.register(creation_tools.SET_ABILITY_BONUSES, creation_handlers.set_ability_bonuses)
+        self.register(creation_tools.ADD_SKILL_PROFICIENCY, creation_handlers.add_skill_proficiency)
+        self.register(creation_tools.SELECT_CANTRIPS, creation_handlers.select_cantrips)
+        self.register(creation_tools.SELECT_SPELLS, creation_handlers.select_spells)
+        self.register(creation_tools.SELECT_ORIGIN_FEAT, creation_handlers.select_origin_feat)
+        self.register(creation_tools.GET_CHARACTER_PREVIEW, creation_handlers.get_character_preview)
+        self.register(creation_tools.FINALIZE_CHARACTER, creation_handlers.finalize_character)
+        self.register(creation_tools.SUGGEST_BUILD, creation_handlers.suggest_build)
+        self.register(creation_tools.CREATE_ADVANCEMENT_PLAN, creation_handlers.create_advancement_plan)
 
     def register(self, tool: ToolDefinition, handler: Callable) -> None:
         """Register a tool with its handler.

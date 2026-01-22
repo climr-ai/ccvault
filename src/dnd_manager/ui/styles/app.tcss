@@ -717,3 +717,63 @@ Footer {
 .options-list > .option-list--option-hover {
     background: $surface-darken-1;
 }
+
+/* AI Overlay Modal */
+AIOverlayScreen {
+    align: center middle;
+}
+
+#ai-overlay-container {
+    width: 90%;
+    height: 90%;
+    max-width: 120;
+    max-height: 40;
+    background: $surface;
+    border: solid $primary;
+    padding: 1 2;
+}
+
+#overlay-title {
+    text-align: center;
+    text-style: bold;
+    color: $primary;
+    padding-bottom: 0;
+}
+
+#overlay-context {
+    text-align: center;
+    color: $text-muted;
+    padding-bottom: 1;
+}
+
+#overlay-log {
+    height: 1fr;
+    border: solid $surface-darken-1;
+    padding: 1;
+    margin: 1 0;
+    background: $surface-darken-1;
+}
+
+#ai-overlay-container .mode-row {
+    height: auto;
+    align: center middle;
+    padding-bottom: 1;
+}
+
+#ai-overlay-container .mode-btn {
+    margin: 0 1;
+    min-width: 16;
+}
+
+#ai-overlay-container .chat-input-row {
+    height: auto;
+    padding-top: 1;
+}
+
+#ai-overlay-container .chat-input-row Input {
+    width: 1fr;
+}
+
+#ai-overlay-container .chat-input-row Button {
+    margin-left: 1;
+}

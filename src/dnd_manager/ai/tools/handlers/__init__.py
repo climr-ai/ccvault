@@ -7,6 +7,8 @@ from dnd_manager.ai.tools.handlers import (
     spell_handlers,
     inventory_handlers,
     custom_handlers,
+    ruleset_handlers,
+    creation_handlers,
 )
 
 __all__ = [
@@ -16,4 +18,6 @@ __all__ = [
     "spell_handlers",
     "inventory_handlers",
     "custom_handlers",
+    "ruleset_handlers",
+    "creation_handlers",
 ]

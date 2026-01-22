@@ -7,6 +7,8 @@ from dnd_manager.ai.tools.definitions import (
     spell_tools,
     inventory_tools,
     custom_tools,
+    creation_tools,
+    ruleset_tools,
 )
 
 __all__ = [
@@ -16,4 +18,6 @@ __all__ = [
     "spell_tools",
     "inventory_tools",
     "custom_tools",
+    "creation_tools",
+    "ruleset_tools",
 ]

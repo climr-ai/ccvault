@@ -10,7 +10,7 @@ from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Header, Footer, Static, Button, Label, Input, RichLog, OptionList
 from textual.widgets.option_list import Option
-from textual.screen import Screen
+from textual.screen import Screen, ModalScreen
 from textual.message import Message
 
 from dnd_manager.config import Config, get_config_manager
@@ -29,6 +29,29 @@ from dnd_manager.data import (
     species_grants_feat,
 )
 from dnd_manager.data.backgrounds import get_origin_feat_for_background
+
+
+# Screen Context Protocol for AI overlay
+class ScreenContextMixin:
+    """Mixin for screens to provide context to the AI overlay.
+
+    Implement get_ai_context() to provide relevant context about
+    what the user is currently viewing/doing.
+    """
+
+    def get_ai_context(self) -> dict:
+        """Return context dictionary for AI.
+
+        Override this to provide screen-specific context like:
+        - screen_type: Name of what the screen shows
+        - description: What the user is doing
+        - character: Current character if any
+        - data: Relevant data (items, spells, stats, etc.)
+        """
+        return {
+            "screen_type": self.__class__.__name__,
+            "description": "User is viewing the application",
+        }
 
 
 # Ability Score Constants
@@ -177,7 +200,7 @@ class ListNavigationMixin:
         return False
 
 
-class CharacterCreationScreen(ListNavigationMixin, Screen):
+class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
     """Wizard for creating a new character."""
 
     BINDINGS = [
@@ -304,6 +327,49 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                     continue
             active.append(step)
         return active
+
+    def get_ai_context(self) -> dict:
+        """Provide character creation context for AI."""
+        step_names = {
+            "ruleset": "Selecting ruleset",
+            "name": "Choosing name",
+            "class": "Selecting class",
+            "species": "Selecting species/race",
+            "subspecies": "Selecting subspecies",
+            "species_feat": "Selecting species feat",
+            "background": "Selecting background",
+            "origin_feat": "Selecting origin feat",
+            "abilities": "Assigning ability scores",
+            "skills": "Selecting skill proficiencies",
+            "spells": "Selecting spells",
+            "confirm": "Reviewing and confirming",
+        }
+        # Safely get current step
+        current_step = "unknown"
+        if hasattr(self, 'char_data') and hasattr(self, 'step'):
+            steps = self.steps
+            if self.step < len(steps):
+                current_step = steps[self.step]
+
+        # Safely get char_data
+        char_data = getattr(self, 'char_data', {})
+
+        return {
+            "screen_type": "Character Creation Wizard",
+            "description": f"Creating a character - {step_names.get(current_step, current_step)}",
+            "data": {
+                "current_step": current_step,
+                "choices_so_far": {
+                    "ruleset": char_data.get("ruleset"),
+                    "name": char_data.get("name"),
+                    "class": char_data.get("class"),
+                    "species": char_data.get("species"),
+                    "subspecies": char_data.get("subspecies"),
+                    "background": char_data.get("background"),
+                    "selected_skills": getattr(self, "selected_skills", []),
+                },
+            },
+        }
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -2310,6 +2376,7 @@ class WelcomeScreen(Screen):
 
     BINDINGS = [
         Binding("n", "new_character", "New Character"),
+        Binding("c", "ai_create", "AI Create"),
         Binding("o", "open_character", "Open Character"),
         Binding("r", "resume_draft", "Resume Draft", show=False),
         Binding("a", "ai_chat", "AI Chat"),
@@ -2322,7 +2389,7 @@ class WelcomeScreen(Screen):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self.selected_index = 0
-        self.button_ids = ["btn-new", "btn-open", "btn-ai", "btn-quit"]
+        self.button_ids = ["btn-new", "btn-ai-create", "btn-open", "btn-ai", "btn-quit"]
         self._draft_store = None
         self._has_draft = False
 
@@ -2351,6 +2418,7 @@ class WelcomeScreen(Screen):
             Static(id="draft-notice", classes="draft-notice"),
             Horizontal(
                 Button("New Character", id="btn-new", variant="primary"),
+                Button("AI Create", id="btn-ai-create", variant="success"),
                 Button("Resume Draft", id="btn-resume", variant="success"),
                 Button("Open Character", id="btn-open", variant="default"),
                 Button("AI Assistant", id="btn-ai", variant="warning"),
@@ -2374,14 +2442,14 @@ class WelcomeScreen(Screen):
 
         if draft_info:
             self._has_draft = True
-            self.button_ids = ["btn-new", "btn-resume", "btn-open", "btn-quit"]
+            self.button_ids = ["btn-new", "btn-ai-create", "btn-resume", "btn-open", "btn-ai", "btn-quit"]
             resume_btn.display = True
             # Show draft info
             notice.update(f"Draft: {draft_info['name']} ({draft_info['class']} {draft_info['species']}) - Press \\[R] to resume")
             notice.display = True
         else:
             self._has_draft = False
-            self.button_ids = ["btn-new", "btn-open", "btn-quit"]
+            self.button_ids = ["btn-new", "btn-ai-create", "btn-open", "btn-ai", "btn-quit"]
             resume_btn.display = False
             notice.display = False
 
@@ -2411,6 +2479,8 @@ class WelcomeScreen(Screen):
         btn_id = self.button_ids[self.selected_index]
         if btn_id == "btn-new":
             self.action_new_character()
+        elif btn_id == "btn-ai-create":
+            self.action_ai_create()
         elif btn_id == "btn-resume":
             self.action_resume_draft()
         elif btn_id == "btn-open":
@@ -2448,10 +2518,20 @@ class WelcomeScreen(Screen):
         """Open AI chat without a character (general D&D help)."""
         self.app.push_screen(AIChatScreen(character=None, mode="assistant"))
 
+    def action_ai_create(self) -> None:
+        """Open AI overlay in character creation mode."""
+        context = {
+            "screen_type": "Welcome Screen",
+            "description": "Starting AI-driven character creation",
+        }
+        self.app.push_screen(AIOverlayScreen(screen_context=context, mode="creation"))
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "btn-new":
             self.action_new_character()
+        elif event.button.id == "btn-ai-create":
+            self.action_ai_create()
         elif event.button.id == "btn-resume":
             self.action_resume_draft()
         elif event.button.id == "btn-open":
@@ -3099,6 +3179,356 @@ class AIChatScreen(Screen):
         """Clear chat history."""
         self._messages.clear()
         log = self.query_one("#chat-log", RichLog)
+        log.clear()
+        self._show_mode_intro()
+        self.notify("Chat cleared")
+
+
+class AIOverlayScreen(ModalScreen):
+    """Global AI overlay modal that can be accessed from any screen.
+
+    This provides context-aware AI assistance based on what screen
+    the user is currently viewing. It also supports character creation
+    mode with tool-calling capabilities.
+    """
+
+    BINDINGS = [
+        Binding("escape", "close", "Close"),
+        Binding("ctrl+l", "clear", "Clear Chat"),
+    ]
+
+    MODES = [
+        ("context", "Context Help"),
+        ("creation", "Create Character"),
+        ("assistant", "General Assistant"),
+    ]
+
+    def __init__(self, screen_context: dict = None, mode: str = "context", **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.screen_context = screen_context or {}
+        self.current_mode = mode
+        self._messages: list = []
+        self._provider = None
+        self._tool_session = None
+        self._creation_session_id = "overlay_creation"
+
+    def compose(self) -> ComposeResult:
+        mode_name = dict(self.MODES).get(self.current_mode, "Assistant")
+        context_type = self.screen_context.get("screen_type", "Unknown")
+
+        yield Container(
+            Static(f"AI Assistant - {mode_name}", id="overlay-title", classes="title"),
+            Static(f"Context: {context_type}", id="overlay-context", classes="subtitle"),
+            Horizontal(
+                *[Button(name, id=f"overlay-mode-{mode}",
+                        variant="primary" if mode == self.current_mode else "default",
+                        classes="mode-btn")
+                  for mode, name in self.MODES],
+                classes="mode-row",
+            ),
+            RichLog(id="overlay-log", wrap=True, markup=True),
+            Horizontal(
+                Input(placeholder="Ask a question or describe your character...", id="overlay-input"),
+                Button("Send", id="btn-overlay-send", variant="primary"),
+                classes="chat-input-row",
+            ),
+            id="ai-overlay-container",
+            classes="ai-overlay",
+        )
+
+    def on_mount(self) -> None:
+        """Initialize on mount."""
+        self.query_one("#overlay-input", Input).focus()
+        self._show_mode_intro()
+
+    def _show_mode_intro(self) -> None:
+        """Show introduction for current mode."""
+        log = self.query_one("#overlay-log", RichLog)
+        mode_name = dict(self.MODES).get(self.current_mode, "Assistant")
+        log.write(f"[bold cyan]{mode_name} mode active[/]")
+
+        if self.current_mode == "context":
+            screen_type = self.screen_context.get("screen_type", "")
+            description = self.screen_context.get("description", "")
+            log.write(f"You're on: {screen_type}")
+            if description:
+                log.write(f"{description}")
+            log.write("")
+            log.write("Ask questions about what you see, or get help with your current task.")
+        elif self.current_mode == "creation":
+            log.write("Let's create a character through conversation!")
+            log.write("")
+            log.write("Tell me about the character you want to play:")
+            log.write("  - What's their concept? (e.g., 'stealthy archer', 'holy warrior')")
+            log.write("  - What ruleset? (D&D 2024, D&D 2014, or Tales of the Valiant)")
+            log.write("  - Any specific requirements?")
+            log.write("")
+            log.write("I'll guide you through the process and help optimize your build.")
+        elif self.current_mode == "assistant":
+            log.write("General D&D assistance mode.")
+            log.write("Ask about rules, mechanics, character builds, or anything else.")
+
+        log.write("")
+
+    def _update_mode_buttons(self) -> None:
+        """Update mode button styles."""
+        for mode, _ in self.MODES:
+            try:
+                btn = self.query_one(f"#overlay-mode-{mode}", Button)
+                btn.variant = "primary" if mode == self.current_mode else "default"
+            except Exception:
+                pass
+
+        # Update title
+        mode_name = dict(self.MODES).get(self.current_mode, "Assistant")
+        try:
+            self.query_one("#overlay-title", Static).update(f"AI Assistant - {mode_name}")
+        except Exception:
+            pass
+
+    async def _get_provider(self):
+        """Get the AI provider."""
+        if self._provider is None:
+            from dnd_manager.ai import get_provider
+            manager = get_config_manager()
+            provider_name = manager.get("ai.default_provider") or "gemini"
+            self._provider = get_provider(provider_name)
+        return self._provider
+
+    def _build_creation_system_prompt(self) -> str:
+        """Build system prompt for character creation mode."""
+        return """You are an expert D&D character creation assistant. Your role is to help players create characters through natural conversation.
+
+WORKFLOW:
+1. Understand the player's character concept
+2. Ask clarifying questions about their vision
+3. Suggest optimal race, class, background combinations
+4. Guide ability score allocation
+5. Help with skill and spell selection
+6. Create an advancement plan if requested
+
+AVAILABLE TOOLS:
+You have access to character creation tools. Use them to:
+- create_character: Initialize a new character with a ruleset
+- set_character_name, set_character_class, set_character_species, set_character_background
+- assign_ability_scores: Set all six ability scores
+- set_ability_bonuses: Apply racial/background bonuses
+- add_skill_proficiency: Add skill proficiencies
+- select_cantrips, select_spells: For spellcasters
+- select_origin_feat: For 2024 rules
+- get_character_preview: Show current character state
+- finalize_character: Complete and save the character
+- suggest_build: Get build recommendations for a concept
+- create_advancement_plan: Plan levels 1-20
+
+GUIDELINES:
+- Be conversational and friendly
+- Ask one or two questions at a time, not a wall of questions
+- Explain your recommendations
+- For optimization, prioritize the class's primary ability
+- Remember: 2024 rules have backgrounds give ability bonuses, 2014 has races give them
+- Always confirm before finalizing
+
+Start by understanding what kind of character the player wants to create."""
+
+    def _build_context_system_prompt(self) -> str:
+        """Build system prompt for context-aware help."""
+        context_info = ""
+        if self.screen_context:
+            context_info = f"""
+CURRENT CONTEXT:
+Screen: {self.screen_context.get('screen_type', 'Unknown')}
+Description: {self.screen_context.get('description', 'N/A')}
+"""
+            if 'character' in self.screen_context:
+                char = self.screen_context['character']
+                context_info += f"""
+Character: {char.get('name', 'Unknown')}
+Class: {char.get('class', 'Unknown')}
+Level: {char.get('level', 1)}
+"""
+            if 'data' in self.screen_context:
+                data = self.screen_context['data']
+                context_info += f"\nRelevant Data: {data}\n"
+
+        return f"""You are a helpful D&D assistant providing context-aware help.
+{context_info}
+Help the user understand what they're looking at and answer questions about:
+- The current screen and its options
+- D&D rules and mechanics relevant to their situation
+- Character optimization and choices
+- How to use the application
+
+Be concise and helpful. Reference the context when relevant."""
+
+    async def _send_message(self, message: str) -> None:
+        """Send a message to the AI."""
+        from dnd_manager.ai.base import AIMessage, MessageRole
+
+        log = self.query_one("#overlay-log", RichLog)
+        log.write(f"\n[bold green]You:[/] {message}")
+
+        provider = await self._get_provider()
+        if not provider:
+            log.write("[bold red]Error:[/] No AI provider configured.")
+            return
+
+        if not provider.is_configured():
+            log.write(f"[bold red]Error:[/] {provider.name} not configured.")
+            return
+
+        # Build system prompt based on mode
+        if self.current_mode == "creation":
+            system_prompt = self._build_creation_system_prompt()
+            await self._send_with_tools(message, system_prompt, log)
+        elif self.current_mode == "context":
+            system_prompt = self._build_context_system_prompt()
+            await self._send_simple(message, system_prompt, log)
+        else:
+            from dnd_manager.ai import build_system_prompt
+            char = self.screen_context.get('character_obj')
+            system_prompt = build_system_prompt(char, mode="assistant")
+            await self._send_simple(message, system_prompt, log)
+
+    async def _send_simple(self, message: str, system_prompt: str, log: RichLog) -> None:
+        """Send a simple message without tool calling."""
+        from dnd_manager.ai.base import AIMessage, MessageRole
+
+        provider = await self._get_provider()
+        self._messages.append(AIMessage(role=MessageRole.USER, content=message))
+
+        all_messages = [
+            AIMessage(role=MessageRole.SYSTEM, content=system_prompt),
+            *self._messages,
+        ]
+
+        log.write("[bold blue]Assistant:[/] ", end="")
+
+        try:
+            response_text = ""
+            async for chunk in provider.chat_stream(all_messages):
+                log.write(chunk, end="")
+                response_text += chunk
+            log.write("")
+
+            self._messages.append(AIMessage(role=MessageRole.ASSISTANT, content=response_text))
+
+        except Exception as e:
+            log.write(f"\n[bold red]Error:[/] {e}")
+
+    async def _send_with_tools(self, message: str, system_prompt: str, log: RichLog) -> None:
+        """Send a message with tool calling support for character creation."""
+        from dnd_manager.ai.base import AIMessage, MessageRole
+        from dnd_manager.ai.tools.session import ToolSession
+        from dnd_manager.ai.tools.registry import get_tool_registry
+
+        provider = await self._get_provider()
+
+        # Initialize tool session if needed
+        if self._tool_session is None:
+            registry = get_tool_registry()
+            # Get only creation-related tools
+            creation_tool_names = [
+                "create_character", "set_character_name", "set_character_class",
+                "set_character_species", "set_character_background",
+                "assign_ability_scores", "set_ability_bonuses",
+                "add_skill_proficiency", "select_cantrips", "select_spells",
+                "select_origin_feat", "get_character_preview", "finalize_character",
+                "suggest_build", "create_advancement_plan",
+                # Also include lookup tools for the AI to reference data
+                "lookup_class", "lookup_species", "list_species",
+                "lookup_spell", "get_class_spells", "lookup_feat", "search_feats",
+            ]
+            tools = [registry.get_tool(name) for name in creation_tool_names if registry.get_tool(name)]
+            self._tool_session = ToolSession(
+                provider=provider,
+                tools=tools,
+                system_prompt=system_prompt,
+            )
+
+        self._messages.append(AIMessage(role=MessageRole.USER, content=message))
+        log.write("[bold blue]Assistant:[/] ", end="")
+
+        try:
+            # Use tool session which handles the full AI <-> tool loop
+            result = await self._tool_session.run(message)
+
+            # Display the final response
+            log.write(result.final_response)
+
+            # Show any tool calls that were made
+            if result.tool_calls:
+                log.write("")
+                log.write("[dim]Actions taken:[/]")
+                for call in result.tool_calls:
+                    if call.result and "changes" in call.result:
+                        for change in call.result["changes"]:
+                            log.write(f"  [green]\u2713[/] {change}")
+
+            # Check if character was finalized
+            if result.tool_calls:
+                for call in result.tool_calls:
+                    if call.name == "finalize_character" and call.result:
+                        if call.result.get("data", {}).get("character_created"):
+                            # Character was created - get it from the handler
+                            if "character" in call.result:
+                                created_char = call.result["character"]
+                                # Save it
+                                self.app.store.save(created_char)
+                                log.write("")
+                                log.write(f"[bold green]Character saved![/] {created_char.name}")
+                                log.write("Press [bold]Escape[/] to close and load your new character.")
+
+            self._messages.append(AIMessage(role=MessageRole.ASSISTANT, content=result.final_response))
+
+        except Exception as e:
+            log.write(f"\n[bold red]Error:[/] {e}")
+            import traceback
+            log.write(f"[dim]{traceback.format_exc()}[/]")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        btn_id = event.button.id
+        if btn_id == "btn-overlay-send":
+            self._submit_message()
+        elif btn_id and btn_id.startswith("overlay-mode-"):
+            mode = btn_id.replace("overlay-mode-", "")
+            self._switch_to_mode(mode)
+
+    def _switch_to_mode(self, mode: str) -> None:
+        """Switch to a different mode."""
+        if mode != self.current_mode:
+            self.current_mode = mode
+            self._messages.clear()
+            self._tool_session = None  # Reset tool session for new mode
+            self._update_mode_buttons()
+            log = self.query_one("#overlay-log", RichLog)
+            log.clear()
+            self._show_mode_intro()
+            self.notify(f"Switched to {dict(self.MODES).get(mode, mode)} mode")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter key."""
+        if event.input.id == "overlay-input":
+            self._submit_message()
+
+    def _submit_message(self) -> None:
+        """Submit the current message."""
+        input_widget = self.query_one("#overlay-input", Input)
+        message = input_widget.value.strip()
+        if message:
+            input_widget.value = ""
+            asyncio.create_task(self._send_message(message))
+
+    def action_close(self) -> None:
+        """Close the overlay."""
+        self.dismiss()
+
+    def action_clear(self) -> None:
+        """Clear chat history."""
+        self._messages.clear()
+        self._tool_session = None
+        log = self.query_one("#overlay-log", RichLog)
         log.clear()
         self._show_mode_intro()
         self.notify("Chat cleared")
@@ -6068,7 +6498,7 @@ class CurrencyEditorScreen(Screen):
         self.app.pop_screen()
 
 
-class InventoryScreen(ListNavigationMixin, Screen):
+class InventoryScreen(ScreenContextMixin, ListNavigationMixin, Screen):
     """Screen for managing equipment and inventory."""
 
     BINDINGS = [
@@ -6085,6 +6515,24 @@ class InventoryScreen(ListNavigationMixin, Screen):
         self.selected_index = 0
         self._last_letter = ""
         self._last_letter_index = -1
+
+    def get_ai_context(self) -> dict:
+        """Provide inventory context for AI."""
+        c = self.character
+        items = [
+            {"name": item.name, "equipped": item.equipped, "attuned": item.attuned}
+            for item in c.inventory.items
+        ]
+        return {
+            "screen_type": "Inventory Management",
+            "description": f"Managing {c.name}'s equipment and items",
+            "data": {
+                "items": items[:20],  # Limit to prevent too much context
+                "gold": c.inventory.currency.gp,
+                "selected_item": items[self.selected_index]["name"] if items and self.selected_index < len(items) else None,
+            },
+            "character_obj": c,
+        }
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -6958,7 +7406,7 @@ class SpellBrowserScreen(ListNavigationMixin, Screen):
         self.app.pop_screen()
 
 
-class SpellsScreen(Screen):
+class SpellsScreen(ScreenContextMixin, Screen):
     """Screen for managing spells."""
 
     BINDINGS = [
@@ -6981,6 +7429,21 @@ class SpellsScreen(Screen):
         self.selected_level: int = 0
         self.selected_spell_index: int = 0
         self._spell_list: list[str] = []  # Current list of spells for selection
+
+    def get_ai_context(self) -> dict:
+        """Provide spell context for AI."""
+        c = self.character
+        return {
+            "screen_type": "Spell Management",
+            "description": f"Managing {c.name}'s spells",
+            "data": {
+                "cantrips": c.spellcasting.cantrips,
+                "known_spells": c.spellcasting.known,
+                "prepared": list(c.spellcasting.prepared),
+                "selected_spell": self.selected_spell,
+            },
+            "character_obj": c,
+        }
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -7781,7 +8244,7 @@ class NoteEditorScreen(Screen):
         self.app.pop_screen()
 
 
-class MainDashboard(Screen):
+class MainDashboard(ScreenContextMixin, Screen):
     """Main character dashboard screen."""
 
     BINDINGS = [
@@ -7807,6 +8270,31 @@ class MainDashboard(Screen):
     def __init__(self, character: Character, **kwargs) -> None:
         super().__init__(**kwargs)
         self.character = character
+
+    def get_ai_context(self) -> dict:
+        """Provide character context for AI."""
+        c = self.character
+        return {
+            "screen_type": "Character Dashboard",
+            "description": f"Viewing {c.name}'s character sheet",
+            "character": {
+                "name": c.name,
+                "class": c.primary_class.name if c.primary_class else None,
+                "level": c.primary_class.level if c.primary_class else 1,
+                "species": c.species,
+                "background": c.background,
+                "hp": f"{c.combat.hit_points.current}/{c.combat.hit_points.maximum}",
+                "abilities": {
+                    "str": c.abilities.strength.total,
+                    "dex": c.abilities.dexterity.total,
+                    "con": c.abilities.constitution.total,
+                    "int": c.abilities.intelligence.total,
+                    "wis": c.abilities.wisdom.total,
+                    "cha": c.abilities.charisma.total,
+                },
+            },
+            "character_obj": c,
+        }
 
     def compose(self) -> ComposeResult:
         c = self.character
@@ -8454,6 +8942,7 @@ class DNDManagerApp(App):
 
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", show=True),
+        Binding("ctrl+a", "ai_overlay", "AI Assistant", show=True),
     ]
 
     def __init__(self, character_path: Optional[Path] = None, **kwargs) -> None:
@@ -8504,6 +8993,35 @@ class DNDManagerApp(App):
         """Save the current character."""
         if self.current_character:
             self.store.save(self.current_character)
+
+    def action_ai_overlay(self) -> None:
+        """Open the AI assistant overlay with context from current screen."""
+        # Get context from current screen if it supports it
+        current_screen = self.screen
+        context = {}
+
+        # Check if screen implements ScreenContextMixin
+        if hasattr(current_screen, 'get_ai_context'):
+            context = current_screen.get_ai_context()
+        else:
+            # Default context with screen name
+            context = {
+                "screen_type": current_screen.__class__.__name__,
+                "description": "User is viewing the application",
+            }
+
+        # Add character if available
+        if self.current_character:
+            context["character_obj"] = self.current_character
+            context["character"] = {
+                "name": self.current_character.name,
+                "class": self.current_character.primary_class.name if self.current_character.primary_class else None,
+                "level": self.current_character.primary_class.level if self.current_character.primary_class else 1,
+                "species": self.current_character.species,
+                "background": self.current_character.background,
+            }
+
+        self.push_screen(AIOverlayScreen(screen_context=context))
 
 
 def run_app(character_path: Optional[Path] = None) -> None:
