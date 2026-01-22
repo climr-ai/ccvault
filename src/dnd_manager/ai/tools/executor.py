@@ -224,8 +224,11 @@ class ToolExecutor:
             )
 
         try:
-            # Execute handler with character context
-            result = await handler(self.character, **tool_input)
+            # Execute handler - only pass character if tool requires it
+            if tool.requires_character and self.character:
+                result = await handler(self.character, **tool_input)
+            else:
+                result = await handler(**tool_input)
             return ToolExecutionResult(
                 success=True,
                 result=result.get("data"),

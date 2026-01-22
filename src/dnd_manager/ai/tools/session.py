@@ -1,7 +1,7 @@
 """Tool session manager for AI conversations with function calling."""
 
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from dnd_manager.models.character import Character
 from dnd_manager.storage import CharacterStore
@@ -17,6 +17,21 @@ from dnd_manager.ai.base import (
 from dnd_manager.ai.context import build_system_prompt
 from dnd_manager.ai.tools.registry import get_tool_registry
 from dnd_manager.ai.tools.executor import ToolExecutor
+
+
+@dataclass
+class ToolCall:
+    """Record of a tool call made during a session."""
+    name: str
+    input: dict
+    result: Optional[dict] = None
+
+
+@dataclass
+class ToolSessionResult:
+    """Result from a tool session run."""
+    final_response: str
+    tool_calls: list[ToolCall] = field(default_factory=list)
 
 
 @dataclass
@@ -38,6 +53,8 @@ class ToolSession:
         mode: AI mode (assistant, dm, roleplay, etc.)
         auto_save: Whether to save after tool modifications
         max_tool_iterations: Maximum tool call loops (safety limit)
+        system_prompt: Optional custom system prompt (overrides built-in)
+        tools: Optional custom tool list (overrides registry)
     """
 
     provider: AIProvider
@@ -47,12 +64,15 @@ class ToolSession:
     mode: str = "assistant"
     auto_save: bool = True
     max_tool_iterations: int = 10
+    system_prompt: Optional[str] = None
+    tools: Optional[list] = None
 
     # Internal state (initialized in __post_init__)
     messages: list[AIMessage] = field(default_factory=list, init=False)
     _executor: ToolExecutor = field(init=False)
     _registry: "ToolRegistry" = field(init=False)
     _initialized: bool = field(default=False, init=False)
+    _last_tool_calls: list[ToolCall] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         """Initialize session state."""
@@ -77,6 +97,10 @@ class ToolSession:
 
     def _build_system_prompt(self) -> str:
         """Build system prompt with tool instructions."""
+        # Use custom system prompt if provided
+        if self.system_prompt:
+            return self.system_prompt
+
         # Base prompt already includes comprehensive tool guidance
         base_prompt = build_system_prompt(self.character, mode=self.mode)
 
@@ -123,8 +147,11 @@ IMPORTANT:
             content=user_message,
         ))
 
-        # Get tool definitions
-        tools = self._registry.get_anthropic_tool_definitions()
+        # Get tool definitions - use custom tools if provided
+        if self.tools:
+            tools = [t.to_anthropic_format() for t in self.tools if hasattr(t, 'to_anthropic_format')]
+        else:
+            tools = self._registry.get_anthropic_tool_definitions()
 
         # Determine tool choice - force tools on first iteration if required
         tool_choice = ToolChoice.ANY if require_tools else ToolChoice.AUTO
@@ -132,6 +159,7 @@ IMPORTANT:
         # Iterate until no more tool use or max iterations
         iterations = 0
         final_response = ""
+        self._last_tool_calls = []  # Reset tool call tracking
 
         while iterations < self.max_tool_iterations:
             iterations += 1
@@ -179,6 +207,13 @@ IMPORTANT:
                     tool_use_id=tool_use.id,
                 )
 
+                # Track tool call with result
+                self._last_tool_calls.append(ToolCall(
+                    name=tool_use.name,
+                    input=tool_use.input,
+                    result=result.to_dict() if hasattr(result, 'to_dict') else {"status": "success" if result.success else "error"},
+                ))
+
                 tool_results.append(ToolResultBlock(
                     tool_use_id=tool_use.id,
                     content=result.to_json(),
@@ -199,6 +234,35 @@ IMPORTANT:
                 self._save_character()
 
         return final_response
+
+    async def run(
+        self,
+        user_message: str,
+        stream_callback: Optional[Callable[[str], None]] = None,
+        require_tools: bool = False,
+    ) -> ToolSessionResult:
+        """Process a user message and return structured result with tool calls.
+
+        This is an alternative to chat() that returns a ToolSessionResult
+        containing the final response and a list of tool calls made.
+
+        Args:
+            user_message: The user's input
+            stream_callback: Optional callback for streaming text chunks
+            require_tools: If True, force the AI to use at least one tool
+
+        Returns:
+            ToolSessionResult with final_response and tool_calls
+        """
+        final_response = await self.chat(
+            user_message=user_message,
+            stream_callback=stream_callback,
+            require_tools=require_tools,
+        )
+        return ToolSessionResult(
+            final_response=final_response,
+            tool_calls=self._last_tool_calls.copy(),
+        )
 
     def _save_character(self) -> None:
         """Save character state to storage."""
