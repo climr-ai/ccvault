@@ -1494,7 +1494,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         options_list.mount(Static(""))
         options_list.mount(Static(f"  Selected: {len(self.selected_skills)}/{num_choices}"))
         options_list.mount(Static(""))
-        options_list.mount(Static(r"  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
+        options_list.mount(Static(r"  ↑↓ navigate, Space to toggle, Enter to continue, \[C] clear all"))
         if len(self.selected_skills) == num_choices:
             options_list.mount(Static("  Press Next to continue"))
 
@@ -1581,7 +1581,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             options_list.mount(Static(""))
             options_list.mount(Static(f"  Selected: {len(self.selected_cantrips)}/{cantrips_known}"))
             options_list.mount(Static(""))
-            options_list.mount(Static(r"  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
+            options_list.mount(Static(r"  ↑↓ navigate, Space to toggle, Enter to continue, \[C] clear all"))
             if len(self.selected_cantrips) >= cantrips_known:
                 options_list.mount(Static("  Press Next to continue to spells"))
 
@@ -1600,7 +1600,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             options_list.mount(Static(""))
             options_list.mount(Static(f"  Selected: {len(self.selected_spells)}/{spells_known}"))
             options_list.mount(Static(""))
-            options_list.mount(Static(r"  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
+            options_list.mount(Static(r"  ↑↓ navigate, Space to toggle, Enter to continue, \[C] clear all"))
             if len(self.selected_spells) >= spells_known:
                 options_list.mount(Static("  Press Next to continue"))
 
@@ -2217,7 +2217,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                 self.skill_selected_index += 1
                 self._show_skills()
             return True
-        elif key in ("space", "enter"):
+        elif key == "space":
             self._toggle_skill()
             return True
         elif key.lower() == "c":
@@ -2251,7 +2251,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                 self.spell_selected_index += 1
                 self._show_spells()
             return True
-        elif key in ("space", "enter"):
+        elif key == "space":
             self._toggle_spell()
             return True
         elif key.lower() == "c":
