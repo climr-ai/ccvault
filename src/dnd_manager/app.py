@@ -1798,6 +1798,15 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         """Go to next step or create character."""
         step_name = self.steps[self.step]
 
+        # Sync selected_option with OptionList's actual highlighted item
+        # This ensures clicking Next button uses the correct selection
+        try:
+            options_list = self.query_one("#options-list", OptionList)
+            if options_list.highlighted is not None:
+                self.selected_option = options_list.highlighted
+        except Exception:
+            pass  # OptionList might not exist on some steps
+
         # Save current step data
         if step_name == "ruleset":
             # Map display name to ruleset ID
