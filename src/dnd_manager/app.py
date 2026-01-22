@@ -515,6 +515,21 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                         scores_parts.append(f"{abbrev}:{total}")
             options_list.mount(Static(f"  Abilities: {' '.join(scores_parts)}"))
 
+            # Calculate and show HP preview
+            class_name = self.char_data.get("class", "")
+            class_info = get_class_info(class_name)
+            if class_info:
+                hit_die_size = int(class_info.hit_die[1:])
+                # Calculate CON modifier from assigned scores
+                con_idx = self.score_assignments.get("constitution")
+                if con_idx is not None and con_idx < len(self.base_scores):
+                    base_con = self.base_scores[con_idx]
+                    con_bonus = bonuses.get("constitution", 0)
+                    total_con = base_con + con_bonus
+                    con_mod = (total_con - 10) // 2
+                    max_hp = max(1, hit_die_size + con_mod)
+                    options_list.mount(Static(f"  HP: {max_hp} ({class_info.hit_die} + {con_mod} CON)"))
+
             # Show skills
             if self.selected_skills:
                 options_list.mount(Static(f"  Skills: {', '.join(self.selected_skills)}"))
@@ -1367,14 +1382,14 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
         for i, skill in enumerate(skill_options):
             is_selected = skill in self.selected_skills
-            prefix = "\[X]" if is_selected else "\[ ]"
+            prefix = r"\[X]" if is_selected else r"\[ ]"
             marker = "▸ " if i == self.skill_selected_index else "  "
             options_list.mount(Static(f"{marker}{prefix} {skill}"))
 
         options_list.mount(Static(""))
         options_list.mount(Static(f"  Selected: {len(self.selected_skills)}/{num_choices}"))
         options_list.mount(Static(""))
-        options_list.mount(Static("  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
+        options_list.mount(Static(r"  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
         if len(self.selected_skills) == num_choices:
             options_list.mount(Static("  Press Next to continue"))
 
@@ -1454,14 +1469,14 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
             for i, spell in enumerate(cantrips):
                 is_selected = spell.name in self.selected_cantrips
-                prefix = "\[X]" if is_selected else "\[ ]"
+                prefix = r"\[X]" if is_selected else r"\[ ]"
                 marker = "▸ " if i == self.spell_selected_index else "  "
                 options_list.mount(Static(f"{marker}{prefix} {spell.name}"))
 
             options_list.mount(Static(""))
             options_list.mount(Static(f"  Selected: {len(self.selected_cantrips)}/{cantrips_known}"))
             options_list.mount(Static(""))
-            options_list.mount(Static("  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
+            options_list.mount(Static(r"  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
             if len(self.selected_cantrips) >= cantrips_known:
                 options_list.mount(Static("  Press Next to continue to spells"))
 
@@ -1473,14 +1488,14 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
             for i, spell in enumerate(level1_spells):
                 is_selected = spell.name in self.selected_spells
-                prefix = "\[X]" if is_selected else "\[ ]"
+                prefix = r"\[X]" if is_selected else r"\[ ]"
                 marker = "▸ " if i == self.spell_selected_index else "  "
                 options_list.mount(Static(f"{marker}{prefix} {spell.name}"))
 
             options_list.mount(Static(""))
             options_list.mount(Static(f"  Selected: {len(self.selected_spells)}/{spells_known}"))
             options_list.mount(Static(""))
-            options_list.mount(Static("  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
+            options_list.mount(Static(r"  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
             if len(self.selected_spells) >= spells_known:
                 options_list.mount(Static("  Press Next to continue"))
 
@@ -1816,6 +1831,16 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             wisdom=AbilityScore(base=base_scores["wisdom"], bonus=bonuses.get("wisdom", 0)),
             charisma=AbilityScore(base=base_scores["charisma"], bonus=bonuses.get("charisma", 0)),
         )
+
+        # Calculate HP at level 1: max hit die + CON modifier
+        class_def = get_class_info(self.char_data["class"])
+        if class_def:
+            # Parse hit die (e.g., "d10" -> 10)
+            hit_die_size = int(class_def.hit_die[1:])  # Remove 'd' prefix
+            con_mod = char.abilities.constitution.modifier
+            max_hp = max(1, hit_die_size + con_mod)  # Minimum 1 HP
+            char.combat.hit_points.maximum = max_hp
+            char.combat.hit_points.current = max_hp
 
         # Add species feat if selected (from Variant Human or Human ToV)
         if self.char_data.get("species_feat"):
