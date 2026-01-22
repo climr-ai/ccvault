@@ -19,6 +19,17 @@ from dnd_manager.ai.tools.handlers.creation_handlers import (
     create_advancement_plan,
     get_creation_session,
     clear_creation_session,
+    # Extended creation tools
+    set_class_levels,
+    set_combat_stats,
+    set_hit_dice_pool,
+    set_saving_throw_proficiencies,
+    set_proficiencies,
+    add_features,
+    set_spellcasting,
+    add_equipment,
+    set_currency,
+    set_personality,
 )
 
 
@@ -371,3 +382,346 @@ class TestQueryTools:
 
         assert result["data"]["current_class"] == "Fighter"
         assert result["data"]["target_level"] == 10
+
+
+class TestExtendedCreationTools:
+    """Tests for extended character creation tools."""
+
+    @pytest.fixture
+    def session_id(self):
+        """Provide a unique session ID and clean up."""
+        sid = "test_extended"
+        clear_creation_session(sid)
+        return sid
+
+    @pytest.mark.asyncio
+    async def test_set_class_levels_single_class(self, session_id):
+        """Test setting class levels for a single class."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        result = await set_class_levels(
+            primary_class="Paladin",
+            primary_level=6,
+            primary_subclass="Oath of Devotion",
+            session_id=session_id
+        )
+
+        assert result["data"]["primary_class"] == "Paladin"
+        assert result["data"]["primary_level"] == 6
+        assert result["data"]["total_level"] == 6
+
+        session = get_creation_session(session_id)
+        assert session.primary_level == 6
+        assert session.primary_subclass == "Oath of Devotion"
+
+    @pytest.mark.asyncio
+    async def test_set_class_levels_multiclass(self, session_id):
+        """Test setting class levels with multiclass."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        result = await set_class_levels(
+            primary_class="Paladin",
+            primary_level=6,
+            primary_subclass="Oath of Devotion",
+            multiclass=[
+                {"class": "Sorcerer", "level": 14, "subclass": "Divine Soul"}
+            ],
+            session_id=session_id
+        )
+
+        assert result["data"]["total_level"] == 20
+        assert len(result["data"]["multiclass"]) == 1
+
+        session = get_creation_session(session_id)
+        assert session.multiclass_entries[0]["class"] == "Sorcerer"
+        assert session.multiclass_entries[0]["level"] == 14
+
+    @pytest.mark.asyncio
+    async def test_set_class_levels_exceeds_20_raises(self, session_id):
+        """Test that total level > 20 raises error."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+
+        with pytest.raises(ValueError, match="exceeds maximum"):
+            await set_class_levels(
+                primary_class="Fighter",
+                primary_level=15,
+                multiclass=[{"class": "Rogue", "level": 10}],
+                session_id=session_id
+            )
+
+    @pytest.mark.asyncio
+    async def test_set_combat_stats(self, session_id):
+        """Test setting combat stats directly."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        result = await set_combat_stats(
+            max_hp=156,
+            armor_class=24,
+            speed=30,
+            session_id=session_id
+        )
+
+        assert result["data"]["max_hp"] == 156
+        assert result["data"]["armor_class"] == 24
+        assert result["data"]["speed"] == 30
+
+        session = get_creation_session(session_id)
+        assert session.max_hp == 156
+        assert session.armor_class == 24
+
+    @pytest.mark.asyncio
+    async def test_set_hit_dice_pool(self, session_id):
+        """Test setting hit dice pool for multiclass."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        result = await set_hit_dice_pool(
+            pools={"d10": 6, "d6": 14},
+            session_id=session_id
+        )
+
+        assert result["data"]["pools"]["d10"] == 6
+        assert result["data"]["pools"]["d6"] == 14
+        assert result["data"]["total"] == 20
+
+    @pytest.mark.asyncio
+    async def test_set_saving_throw_proficiencies(self, session_id):
+        """Test setting saving throw proficiencies."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        result = await set_saving_throw_proficiencies(
+            saves=["wisdom", "charisma", "constitution"],
+            session_id=session_id
+        )
+
+        assert len(result["data"]["saving_throws"]) == 3
+        session = get_creation_session(session_id)
+        assert "wisdom" in session.saving_throws
+
+    @pytest.mark.asyncio
+    async def test_set_proficiencies(self, session_id):
+        """Test setting armor, weapons, tools, languages."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        result = await set_proficiencies(
+            armor=["Light Armor", "Heavy Armor"],
+            weapons=["Simple Weapons", "Martial Weapons"],
+            tools=["Playing Card Set"],
+            languages=["Common", "Celestial"],
+            session_id=session_id
+        )
+
+        assert "Light Armor" in result["data"]["armor"]
+        assert "Martial Weapons" in result["data"]["weapons"]
+
+    @pytest.mark.asyncio
+    async def test_add_features(self, session_id):
+        """Test adding multiple features."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        result = await add_features(
+            features=[
+                {"name": "Divine Smite", "source": "Paladin 2", "description": "Extra radiant damage"},
+                {"name": "Extra Attack", "source": "Paladin 5", "description": "Attack twice"},
+                {"name": "Aura of Protection", "source": "Paladin 6", "description": "+CHA to saves"},
+            ],
+            session_id=session_id
+        )
+
+        assert result["data"]["count"] == 3
+        assert result["data"]["total_features"] == 3
+
+        session = get_creation_session(session_id)
+        assert session.features[0]["name"] == "Divine Smite"
+
+    @pytest.mark.asyncio
+    async def test_set_spellcasting(self, session_id):
+        """Test setting full spellcasting config."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        result = await set_spellcasting(
+            ability="charisma",
+            cantrips=["Fire Bolt", "Light"],
+            known=["Shield", "Misty Step", "Fireball"],
+            prepared=["Bless", "Cure Wounds"],
+            slots={1: 4, 2: 3, 3: 3},
+            session_id=session_id
+        )
+
+        assert result["data"]["ability"] == "charisma"
+        assert result["data"]["cantrips_count"] == 2
+        assert result["data"]["known_count"] == 3
+        assert result["data"]["prepared_count"] == 2
+
+        session = get_creation_session(session_id)
+        assert session.spell_slots[1] == 4
+        assert session.spell_slots[2] == 3
+
+    @pytest.mark.asyncio
+    async def test_add_equipment(self, session_id):
+        """Test adding equipment items."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        result = await add_equipment(
+            items=[
+                {"name": "Holy Avenger", "equipped": True, "attuned": True},
+                {"name": "+1 Plate Armor", "equipped": True},
+                {"name": "Javelin", "quantity": 3},
+            ],
+            session_id=session_id
+        )
+
+        assert result["data"]["count"] == 3
+        assert result["data"]["attuned_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_add_equipment_exceeds_attunement_raises(self, session_id):
+        """Test that > 3 attuned items raises error."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        await add_equipment(
+            items=[
+                {"name": "Item 1", "attuned": True},
+                {"name": "Item 2", "attuned": True},
+                {"name": "Item 3", "attuned": True},
+            ],
+            session_id=session_id
+        )
+
+        with pytest.raises(ValueError, match="exceed limit"):
+            await add_equipment(
+                items=[{"name": "Item 4", "attuned": True}],
+                session_id=session_id
+            )
+
+    @pytest.mark.asyncio
+    async def test_set_currency(self, session_id):
+        """Test setting currency."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        result = await set_currency(
+            pp=50, gp=2500, ep=0, sp=0, cp=0,
+            session_id=session_id
+        )
+
+        assert result["data"]["currency"]["pp"] == 50
+        assert result["data"]["currency"]["gp"] == 2500
+        assert result["data"]["total_gp"] == 3000.0
+
+    @pytest.mark.asyncio
+    async def test_set_personality(self, session_id):
+        """Test setting personality."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        result = await set_personality(
+            traits=["I speak formally"],
+            ideals=["Honor above all"],
+            bonds=["My family"],
+            flaws=["Too proud"],
+            backstory="Born to nobility...",
+            session_id=session_id
+        )
+
+        assert len(result["data"]["traits"]) == 1
+        assert result["data"]["has_backstory"] is True
+
+        session = get_creation_session(session_id)
+        assert session.backstory == "Born to nobility..."
+
+
+class TestExtendedCharacterFinalization:
+    """Test finalize_character with extended fields."""
+
+    @pytest.fixture
+    def session_id(self):
+        sid = "test_finalize_ext"
+        clear_creation_session(sid)
+        return sid
+
+    @pytest.mark.asyncio
+    async def test_finalize_multiclass_character(self, session_id):
+        """Test finalizing a multiclass character."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        await set_character_name(name="Valeria", session_id=session_id)
+        await set_class_levels(
+            primary_class="Paladin",
+            primary_level=6,
+            primary_subclass="Oath of Devotion",
+            multiclass=[{"class": "Sorcerer", "level": 4, "subclass": "Divine Soul"}],
+            session_id=session_id
+        )
+        await set_character_species(species="Human", session_id=session_id)
+        await set_character_background(background="Noble", session_id=session_id)
+        await assign_ability_scores(
+            strength=16, dexterity=10, constitution=14,
+            intelligence=8, wisdom=10, charisma=18,
+            session_id=session_id
+        )
+        await set_combat_stats(max_hp=75, armor_class=20, session_id=session_id)
+        await set_hit_dice_pool(pools={"d10": 6, "d6": 4}, session_id=session_id)
+        await set_saving_throw_proficiencies(
+            saves=["wisdom", "charisma"],
+            session_id=session_id
+        )
+
+        result = await finalize_character(confirm=True, session_id=session_id)
+
+        assert result["data"]["character_created"] is True
+        assert result["data"]["total_level"] == 10
+        assert "Paladin 6 / Sorcerer 4" in result["data"]["class"]
+
+        char = result["character"]
+        assert char.name == "Valeria"
+        assert char.total_level == 10
+        assert char.is_multiclass() is True
+        assert char.combat.hit_points.maximum == 75
+        assert char.combat.armor_class == 20
+        assert "d10" in char.combat.hit_dice_pool.pools
+        assert "d6" in char.combat.hit_dice_pool.pools
+
+    @pytest.mark.asyncio
+    async def test_finalize_with_spellcasting(self, session_id):
+        """Test finalizing a character with spellcasting."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        await set_character_name(name="Wizard", session_id=session_id)
+        await set_character_class(class_name="Wizard", session_id=session_id)
+        await set_character_species(species="Elf", session_id=session_id)
+        await set_character_background(background="Sage", session_id=session_id)
+        await assign_ability_scores(
+            strength=8, dexterity=14, constitution=12,
+            intelligence=17, wisdom=10, charisma=10,
+            session_id=session_id
+        )
+        await set_spellcasting(
+            ability="intelligence",
+            cantrips=["Fire Bolt", "Light", "Mage Hand"],
+            known=["Magic Missile", "Shield"],
+            prepared=["Detect Magic"],
+            slots={1: 4, 2: 3},
+            session_id=session_id
+        )
+
+        result = await finalize_character(confirm=True, session_id=session_id)
+
+        char = result["character"]
+        assert len(char.spellcasting.cantrips) == 3
+        assert "Magic Missile" in char.spellcasting.known
+        assert "Detect Magic" in char.spellcasting.prepared
+        assert char.spellcasting.slots[1].total == 4
+
+    @pytest.mark.asyncio
+    async def test_finalize_with_equipment(self, session_id):
+        """Test finalizing a character with equipment."""
+        await create_character(ruleset="dnd2024", session_id=session_id)
+        await set_character_name(name="Fighter", session_id=session_id)
+        await set_character_class(class_name="Fighter", session_id=session_id)
+        await set_character_species(species="Human", session_id=session_id)
+        await set_character_background(background="Soldier", session_id=session_id)
+        await assign_ability_scores(
+            strength=16, dexterity=14, constitution=14,
+            intelligence=10, wisdom=10, charisma=10,
+            session_id=session_id
+        )
+        await add_equipment(
+            items=[
+                {"name": "Longsword", "equipped": True},
+                {"name": "Shield", "equipped": True},
+                {"name": "Chain Mail", "equipped": True},
+            ],
+            session_id=session_id
+        )
+        await set_currency(gp=100, session_id=session_id)
+
+        result = await finalize_character(confirm=True, session_id=session_id)
+
+        char = result["character"]
+        assert len(char.equipment.items) == 3
+        assert char.equipment.currency.gp == 100
+        assert any(i.name == "Longsword" for i in char.equipment.items)

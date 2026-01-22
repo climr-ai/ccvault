@@ -377,6 +377,339 @@ Call this after the basic character is set up to help the player plan their prog
 )
 
 
+# ============================================================================
+# Extended creation tools for full character building (multiclass, equipment, etc.)
+# ============================================================================
+
+SET_CLASS_LEVELS = ToolDefinition(
+    name="set_class_levels",
+    description="""Set the primary class with level and subclass, plus optional multiclass entries.
+Use this to create characters above level 1 or multiclass characters.
+
+Example: Paladin 6 / Sorcerer 14 would be:
+- primary_class="Paladin", primary_level=6, primary_subclass="Oath of Devotion"
+- multiclass=[{"class": "Sorcerer", "level": 14, "subclass": "Divine Soul"}]
+
+Total level across all classes cannot exceed 20.""",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "primary_class": {
+                "type": "string",
+                "description": "Primary class name (e.g., 'Paladin')",
+            },
+            "primary_level": {
+                "type": "integer",
+                "description": "Primary class level (1-20)",
+                "minimum": 1,
+                "maximum": 20,
+            },
+            "primary_subclass": {
+                "type": "string",
+                "description": "Subclass for primary class (e.g., 'Oath of Devotion')",
+            },
+            "multiclass": {
+                "type": "array",
+                "description": "Additional classes for multiclassing",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "class": {"type": "string", "description": "Class name"},
+                        "level": {"type": "integer", "minimum": 1, "maximum": 20},
+                        "subclass": {"type": "string", "description": "Subclass name"},
+                    },
+                    "required": ["class", "level"],
+                },
+            },
+        },
+        "required": ["primary_class", "primary_level"],
+    },
+    category=ToolCategory.CHARACTER,
+    risk_level=ToolRiskLevel.MODERATE,
+    requires_character=False,
+)
+
+SET_COMBAT_STATS = ToolDefinition(
+    name="set_combat_stats",
+    description="""Set combat statistics directly (HP, AC, speed).
+Use this to override calculated values for high-level or custom characters.""",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "max_hp": {
+                "type": "integer",
+                "description": "Maximum hit points",
+                "minimum": 1,
+            },
+            "current_hp": {
+                "type": "integer",
+                "description": "Current HP (defaults to max if not specified)",
+                "minimum": 0,
+            },
+            "armor_class": {
+                "type": "integer",
+                "description": "Armor class",
+                "minimum": 1,
+            },
+            "speed": {
+                "type": "integer",
+                "description": "Movement speed in feet",
+                "minimum": 0,
+            },
+        },
+        "required": [],
+    },
+    category=ToolCategory.CHARACTER,
+    risk_level=ToolRiskLevel.MODERATE,
+    requires_character=False,
+)
+
+SET_HIT_DICE_POOL = ToolDefinition(
+    name="set_hit_dice_pool",
+    description="""Set hit dice pools for multiclass characters.
+Each class grants hit dice equal to its level with the class's hit die type.
+
+Example: Paladin 6 / Sorcerer 14 → {"d10": 6, "d6": 14}""",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "pools": {
+                "type": "object",
+                "description": "Map of die type to count (e.g., {'d10': 6, 'd6': 14})",
+                "additionalProperties": {"type": "integer"},
+            },
+        },
+        "required": ["pools"],
+    },
+    category=ToolCategory.CHARACTER,
+    risk_level=ToolRiskLevel.MODERATE,
+    requires_character=False,
+)
+
+SET_SAVING_THROW_PROFICIENCIES = ToolDefinition(
+    name="set_saving_throw_proficiencies",
+    description="""Set saving throw proficiencies. Each class grants proficiency in two saves.
+Use this to set all proficient saves (including those from feats like Resilient).
+
+Common class saves:
+- Fighters/Monks: STR, CON
+- Rogues/Rangers: DEX, INT
+- Clerics/Paladins: WIS, CHA
+- Wizards: INT, WIS""",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "saves": {
+                "type": "array",
+                "description": "List of ability names for proficient saves",
+                "items": {
+                    "type": "string",
+                    "enum": ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"],
+                },
+            },
+        },
+        "required": ["saves"],
+    },
+    category=ToolCategory.CHARACTER,
+    risk_level=ToolRiskLevel.MODERATE,
+    requires_character=False,
+)
+
+SET_PROFICIENCIES = ToolDefinition(
+    name="set_proficiencies",
+    description="""Set armor, weapon, tool, and language proficiencies.""",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "armor": {
+                "type": "array",
+                "description": "Armor proficiencies (e.g., ['Light Armor', 'Medium Armor', 'Heavy Armor', 'Shields'])",
+                "items": {"type": "string"},
+            },
+            "weapons": {
+                "type": "array",
+                "description": "Weapon proficiencies (e.g., ['Simple Weapons', 'Martial Weapons'])",
+                "items": {"type": "string"},
+            },
+            "tools": {
+                "type": "array",
+                "description": "Tool proficiencies (e.g., ['Thieves Tools', 'Playing Card Set'])",
+                "items": {"type": "string"},
+            },
+            "languages": {
+                "type": "array",
+                "description": "Languages known (e.g., ['Common', 'Elvish', 'Celestial'])",
+                "items": {"type": "string"},
+            },
+        },
+        "required": [],
+    },
+    category=ToolCategory.CHARACTER,
+    risk_level=ToolRiskLevel.MODERATE,
+    requires_character=False,
+)
+
+ADD_FEATURES = ToolDefinition(
+    name="add_features",
+    description="""Add multiple features to the character (class features, racial traits, feats).
+Each feature can have uses and recharge conditions for limited-use abilities.""",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "features": {
+                "type": "array",
+                "description": "List of features to add",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Feature name"},
+                        "source": {"type": "string", "description": "Source (e.g., 'Paladin 2', 'Feat', 'Aasimar')"},
+                        "description": {"type": "string", "description": "Feature description"},
+                        "uses": {"type": "integer", "description": "Number of uses (omit for unlimited)"},
+                        "recharge": {"type": "string", "description": "Recharge condition (e.g., 'short rest', 'long rest')"},
+                    },
+                    "required": ["name"],
+                },
+            },
+        },
+        "required": ["features"],
+    },
+    category=ToolCategory.CHARACTER,
+    risk_level=ToolRiskLevel.MODERATE,
+    requires_character=False,
+)
+
+SET_SPELLCASTING = ToolDefinition(
+    name="set_spellcasting",
+    description="""Configure full spellcasting: ability, cantrips, known spells, prepared spells, and spell slots.
+Use this for high-level characters or to set up multiclass spell slots.
+
+Multiclass caster level = (Paladin/Ranger level ÷ 2) + (Bard/Cleric/Druid/Sorcerer/Wizard level)
+17th level caster slots: {1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 1, 7: 1, 8: 1, 9: 1}""",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "ability": {
+                "type": "string",
+                "description": "Spellcasting ability",
+                "enum": ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"],
+            },
+            "cantrips": {
+                "type": "array",
+                "description": "List of cantrips known",
+                "items": {"type": "string"},
+            },
+            "known": {
+                "type": "array",
+                "description": "Spells known (for Sorcerer, Bard, etc.)",
+                "items": {"type": "string"},
+            },
+            "prepared": {
+                "type": "array",
+                "description": "Spells prepared (for Cleric, Paladin, Wizard, etc.)",
+                "items": {"type": "string"},
+            },
+            "slots": {
+                "type": "object",
+                "description": "Spell slots by level (e.g., {'1': 4, '2': 3, ...})",
+                "additionalProperties": {"type": "integer"},
+            },
+        },
+        "required": [],
+    },
+    category=ToolCategory.CHARACTER,
+    risk_level=ToolRiskLevel.MODERATE,
+    requires_character=False,
+)
+
+ADD_EQUIPMENT = ToolDefinition(
+    name="add_equipment",
+    description="""Add equipment items to the character. Items can be equipped and attuned (max 3 attuned items).""",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "description": "List of items to add",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Item name"},
+                        "quantity": {"type": "integer", "description": "Quantity (default 1)"},
+                        "weight": {"type": "number", "description": "Weight in pounds"},
+                        "description": {"type": "string", "description": "Item description"},
+                        "equipped": {"type": "boolean", "description": "Whether item is equipped"},
+                        "attuned": {"type": "boolean", "description": "Whether item is attuned (max 3 total)"},
+                    },
+                    "required": ["name"],
+                },
+            },
+        },
+        "required": ["items"],
+    },
+    category=ToolCategory.CHARACTER,
+    risk_level=ToolRiskLevel.MODERATE,
+    requires_character=False,
+)
+
+SET_CURRENCY = ToolDefinition(
+    name="set_currency",
+    description="""Set currency amounts (platinum, gold, electrum, silver, copper).""",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "pp": {"type": "integer", "description": "Platinum pieces", "minimum": 0},
+            "gp": {"type": "integer", "description": "Gold pieces", "minimum": 0},
+            "ep": {"type": "integer", "description": "Electrum pieces", "minimum": 0},
+            "sp": {"type": "integer", "description": "Silver pieces", "minimum": 0},
+            "cp": {"type": "integer", "description": "Copper pieces", "minimum": 0},
+        },
+        "required": [],
+    },
+    category=ToolCategory.CHARACTER,
+    risk_level=ToolRiskLevel.SAFE,
+    requires_character=False,
+)
+
+SET_PERSONALITY = ToolDefinition(
+    name="set_personality",
+    description="""Set personality traits, ideals, bonds, flaws, and backstory.""",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "traits": {
+                "type": "array",
+                "description": "Personality traits",
+                "items": {"type": "string"},
+            },
+            "ideals": {
+                "type": "array",
+                "description": "Character ideals",
+                "items": {"type": "string"},
+            },
+            "bonds": {
+                "type": "array",
+                "description": "Character bonds",
+                "items": {"type": "string"},
+            },
+            "flaws": {
+                "type": "array",
+                "description": "Character flaws",
+                "items": {"type": "string"},
+            },
+            "backstory": {
+                "type": "string",
+                "description": "Character backstory",
+            },
+        },
+        "required": [],
+    },
+    category=ToolCategory.CHARACTER,
+    risk_level=ToolRiskLevel.SAFE,
+    requires_character=False,
+)
+
+
 # All creation tools
 CREATION_TOOLS = [
     CREATE_CHARACTER,
@@ -394,4 +727,15 @@ CREATION_TOOLS = [
     FINALIZE_CHARACTER,
     SUGGEST_BUILD,
     CREATE_ADVANCEMENT_PLAN,
+    # Extended tools for full character building
+    SET_CLASS_LEVELS,
+    SET_COMBAT_STATS,
+    SET_HIT_DICE_POOL,
+    SET_SAVING_THROW_PROFICIENCIES,
+    SET_PROFICIENCIES,
+    ADD_FEATURES,
+    SET_SPELLCASTING,
+    ADD_EQUIPMENT,
+    SET_CURRENCY,
+    SET_PERSONALITY,
 ]

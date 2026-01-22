@@ -136,6 +136,18 @@ class ToolRegistry:
         self.register(creation_tools.SUGGEST_BUILD, creation_handlers.suggest_build)
         self.register(creation_tools.CREATE_ADVANCEMENT_PLAN, creation_handlers.create_advancement_plan)
 
+        # Extended character creation tools for full character building
+        self.register(creation_tools.SET_CLASS_LEVELS, creation_handlers.set_class_levels)
+        self.register(creation_tools.SET_COMBAT_STATS, creation_handlers.set_combat_stats)
+        self.register(creation_tools.SET_HIT_DICE_POOL, creation_handlers.set_hit_dice_pool)
+        self.register(creation_tools.SET_SAVING_THROW_PROFICIENCIES, creation_handlers.set_saving_throw_proficiencies)
+        self.register(creation_tools.SET_PROFICIENCIES, creation_handlers.set_proficiencies)
+        self.register(creation_tools.ADD_FEATURES, creation_handlers.add_features)
+        self.register(creation_tools.SET_SPELLCASTING, creation_handlers.set_spellcasting)
+        self.register(creation_tools.ADD_EQUIPMENT, creation_handlers.add_equipment)
+        self.register(creation_tools.SET_CURRENCY, creation_handlers.set_currency)
+        self.register(creation_tools.SET_PERSONALITY, creation_handlers.set_personality)
+
     def register(self, tool: ToolDefinition, handler: Callable) -> None:
         """Register a tool with its handler.
 
