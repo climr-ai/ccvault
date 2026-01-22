@@ -264,7 +264,7 @@ async def set_character_background(
     session = get_creation_session(session_id)
 
     # Validate background exists
-    bg_data = get_background(background, session.ruleset or "dnd2024")
+    bg_data = get_background(background)
     if not bg_data:
         raise ValueError(f"Unknown background: {background}")
 
@@ -273,8 +273,8 @@ async def set_character_background(
     return {
         "data": {
             "background": background,
-            "feature_name": bg_data.feature_name,
-            "feature_description": bg_data.feature_description,
+            "feature_name": bg_data.feature.name if bg_data.feature else None,
+            "feature_description": bg_data.feature.description if bg_data.feature else None,
             "skill_proficiencies": bg_data.skill_proficiencies,
             "tool_proficiencies": bg_data.tool_proficiencies,
             "languages": bg_data.languages,
