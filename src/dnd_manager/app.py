@@ -556,6 +556,23 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                     weapons = ", ".join(class_info.weapon_proficiencies)
                     options_list.mount(Static(f"    Weapons: {weapons}"))
 
+                # Show starting equipment preview
+                options_list.mount(Static(""))
+                equipment = self._get_starting_equipment(class_name)
+                # Count duplicates
+                from collections import Counter
+                equip_counts = Counter(equipment)
+                equip_display = []
+                for item, count in equip_counts.items():
+                    if count > 1:
+                        equip_display.append(f"{item} x{count}")
+                    else:
+                        equip_display.append(item)
+                options_list.mount(Static(f"  Equipment: {', '.join(equip_display[:5])}"))
+                if len(equip_display) > 5:
+                    options_list.mount(Static(f"            {', '.join(equip_display[5:])}"))
+                options_list.mount(Static("  Starting Gold: 10 gp"))
+
             options_list.mount(Static(""))
             options_list.mount(Static("  Press 'Create Character' to finish"))
             options_list.display = True
@@ -1596,6 +1613,27 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             self.selected_spells = []
         self._show_spells()
 
+    # ==================== Equipment Methods ====================
+
+    def _get_starting_equipment(self, class_name: str) -> list[str]:
+        """Get basic starting equipment for a class."""
+        # Basic starting equipment by class (simplified SRD equipment)
+        equipment_map = {
+            "Barbarian": ["Greataxe", "Handaxe", "Handaxe", "Explorer's Pack", "Javelin", "Javelin", "Javelin", "Javelin"],
+            "Bard": ["Rapier", "Leather Armor", "Dagger", "Entertainer's Pack", "Lute"],
+            "Cleric": ["Mace", "Scale Mail", "Shield", "Light Crossbow", "Crossbow Bolts (20)", "Priest's Pack", "Holy Symbol"],
+            "Druid": ["Wooden Shield", "Scimitar", "Leather Armor", "Explorer's Pack", "Druidic Focus"],
+            "Fighter": ["Chain Mail", "Longsword", "Shield", "Light Crossbow", "Crossbow Bolts (20)", "Dungeoneer's Pack"],
+            "Monk": ["Shortsword", "Dungeoneer's Pack", "Dart", "Dart", "Dart", "Dart", "Dart", "Dart", "Dart", "Dart", "Dart", "Dart"],
+            "Paladin": ["Chain Mail", "Longsword", "Shield", "Javelin", "Javelin", "Javelin", "Javelin", "Javelin", "Priest's Pack", "Holy Symbol"],
+            "Ranger": ["Scale Mail", "Shortsword", "Shortsword", "Longbow", "Arrows (20)", "Dungeoneer's Pack"],
+            "Rogue": ["Rapier", "Shortbow", "Arrows (20)", "Burglar's Pack", "Leather Armor", "Dagger", "Dagger", "Thieves' Tools"],
+            "Sorcerer": ["Light Crossbow", "Crossbow Bolts (20)", "Arcane Focus", "Dungeoneer's Pack", "Dagger", "Dagger"],
+            "Warlock": ["Light Crossbow", "Crossbow Bolts (20)", "Arcane Focus", "Scholar's Pack", "Leather Armor", "Dagger", "Dagger"],
+            "Wizard": ["Quarterstaff", "Arcane Focus", "Scholar's Pack", "Spellbook"],
+        }
+        return equipment_map.get(class_name, ["Backpack", "Bedroll", "Rations (1 day)", "Waterskin"])
+
     # ListNavigationMixin implementation
     @property
     def selected_index(self) -> int:
@@ -1942,6 +1980,14 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                                 description=trait.description,
                             ))
                         break
+
+        # Add basic starting equipment based on class
+        from dnd_manager.models.character import InventoryItem
+        starting_equipment = self._get_starting_equipment(self.char_data["class"])
+        for item_name in starting_equipment:
+            char.equipment.items.append(InventoryItem(name=item_name))
+        # Add starting gold
+        char.equipment.currency.gp = 10
 
         # Save character and clear draft
         self.app.store.save(char)
