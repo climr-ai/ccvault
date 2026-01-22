@@ -193,7 +193,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         self._last_letter: str = ""
         self._last_letter_index: int = -1
         # Dynamic steps - subspecies, species_feat, and origin_feat may be skipped
-        self.all_steps = ["ruleset", "name", "class", "species", "subspecies", "species_feat", "background", "origin_feat", "abilities", "confirm"]
+        self.all_steps = ["ruleset", "name", "class", "species", "subspecies", "species_feat", "background", "origin_feat", "abilities", "skills", "spells", "confirm"]
 
         # Get defaults from config
         config = get_config_manager().config
@@ -211,7 +211,14 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 "background": draft_data.get("background", defaults.background),
                 "origin_feat": draft_data.get("origin_feat"),
                 "ruleset": draft_data.get("ruleset", defaults.ruleset),
+                "skills": draft_data.get("skills", []),
+                "cantrips": draft_data.get("cantrips", []),
+                "spells": draft_data.get("spells", []),
             }
+            # Restore skill/spell state
+            self.selected_skills = self.char_data.get("skills", [])
+            self.selected_cantrips = self.char_data.get("cantrips", [])
+            self.selected_spells = self.char_data.get("spells", [])
         else:
             self.step = 0
             self.char_data = {
@@ -223,6 +230,9 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 "background": defaults.background,
                 "origin_feat": None,
                 "ruleset": defaults.ruleset,
+                "skills": [],
+                "cantrips": [],
+                "spells": [],
             }
 
         self.current_options: list[str] = []
@@ -241,6 +251,16 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         self.bonus_plus_1: str | None = None     # For 2024: ability name for +1
         self.bonus_mode: str = "split"           # For 2024: "split" (+2/+1) or "spread" (+1/+1/+1)
         self.ability_selected_index = 0          # Current selection in ability lists
+
+        # Skill selection state
+        self.selected_skills: list[str] = []     # Skills chosen by user
+        self.skill_selected_index = 0            # Current selection in skill list
+
+        # Spell selection state (for casters)
+        self.selected_cantrips: list[str] = []   # Cantrips chosen
+        self.selected_spells: list[str] = []     # 1st level spells chosen
+        self.spell_selected_index = 0            # Current selection in spell list
+        self.spell_selection_phase = "cantrips"  # "cantrips" or "spells"
 
     @property
     def draft_store(self):
@@ -442,6 +462,12 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         elif step_name == "abilities":
             self._show_ability_substep()
 
+        elif step_name == "skills":
+            self._show_skills()
+
+        elif step_name == "spells":
+            self._show_spells()
+
         elif step_name == "confirm":
             title.update("CONFIRM CHARACTER")
             options_list.remove_children()
@@ -488,6 +514,19 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                     else:
                         scores_parts.append(f"{abbrev}:{total}")
             options_list.mount(Static(f"  Abilities: {' '.join(scores_parts)}"))
+
+            # Show skills
+            if self.selected_skills:
+                options_list.mount(Static(f"  Skills: {', '.join(self.selected_skills)}"))
+
+            # Show spells for casters
+            class_name = self.char_data.get("class", "")
+            class_info = get_class_info(class_name)
+            if class_info and class_info.spellcasting_ability:
+                if self.selected_cantrips:
+                    options_list.mount(Static(f"  Cantrips: {', '.join(self.selected_cantrips)}"))
+                if self.selected_spells:
+                    options_list.mount(Static(f"  Spells: {', '.join(self.selected_spells)}"))
 
             options_list.mount(Static(""))
             options_list.mount(Static("  Press 'Create Character' to finish"))
@@ -1299,6 +1338,236 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
 
         return False
 
+    # ==================== Skill Selection Methods ====================
+
+    def _show_skills(self) -> None:
+        """Show the skill proficiency selection step."""
+        title = self.query_one("#step-title", Static)
+        description = self.query_one("#step-description", Static)
+        options_list = self.query_one("#options-list", OptionList)
+
+        class_name = self.char_data.get("class", "")
+        class_info = get_class_info(class_name)
+
+        if not class_info:
+            # Skip if no class info
+            title.update("SKILLS - No class data")
+            description.update("")
+            self.current_options = []
+            options_list.display = False
+            return
+
+        num_choices = class_info.skill_choices
+        skill_options = class_info.skill_options
+
+        title.update(f"SKILL PROFICIENCIES - Choose {num_choices}")
+
+        # Build the display
+        options_list.remove_children()
+
+        for i, skill in enumerate(skill_options):
+            is_selected = skill in self.selected_skills
+            prefix = "\[X]" if is_selected else "\[ ]"
+            marker = "▸ " if i == self.skill_selected_index else "  "
+            options_list.mount(Static(f"{marker}{prefix} {skill}"))
+
+        options_list.mount(Static(""))
+        options_list.mount(Static(f"  Selected: {len(self.selected_skills)}/{num_choices}"))
+        options_list.mount(Static(""))
+        options_list.mount(Static("  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
+        if len(self.selected_skills) == num_choices:
+            options_list.mount(Static("  Press Next to continue"))
+
+        options_list.display = True
+        self.current_options = skill_options
+        description.update("")
+
+    def _toggle_skill(self) -> None:
+        """Toggle the currently highlighted skill selection."""
+        class_name = self.char_data.get("class", "")
+        class_info = get_class_info(class_name)
+        if not class_info:
+            return
+
+        skill_options = class_info.skill_options
+        if self.skill_selected_index >= len(skill_options):
+            return
+
+        skill = skill_options[self.skill_selected_index]
+        num_choices = class_info.skill_choices
+
+        if skill in self.selected_skills:
+            # Deselect
+            self.selected_skills.remove(skill)
+        else:
+            # Select if we haven't reached the limit
+            if len(self.selected_skills) < num_choices:
+                self.selected_skills.append(skill)
+            else:
+                self.notify(f"Already selected {num_choices} skills. Deselect one first.", severity="warning")
+                return
+
+        self._show_skills()
+
+    def _clear_skills(self) -> None:
+        """Clear all skill selections."""
+        self.selected_skills = []
+        self._show_skills()
+
+    # ==================== Spell Selection Methods ====================
+
+    def _show_spells(self) -> None:
+        """Show the spell selection step for casters."""
+        title = self.query_one("#step-title", Static)
+        description = self.query_one("#step-description", Static)
+        options_list = self.query_one("#options-list", OptionList)
+
+        class_name = self.char_data.get("class", "")
+        class_info = get_class_info(class_name)
+
+        if not class_info or not class_info.spellcasting_ability:
+            # Not a caster, skip this step
+            title.update("SPELLS - Not a spellcaster")
+            description.update("This class does not cast spells at level 1.")
+            options_list.display = False
+            self.current_options = []
+            return
+
+        # Get available spells for this class
+        from dnd_manager.data import get_spells_by_class
+        available_spells = get_spells_by_class(class_name)
+
+        # Filter for cantrips and 1st level spells
+        cantrips = [s for s in available_spells if s.level == 0]
+        level1_spells = [s for s in available_spells if s.level == 1]
+
+        # Determine how many cantrips/spells based on class
+        # Using typical values: most casters get 2-3 cantrips and 2-4 known spells at level 1
+        cantrips_known = self._get_cantrips_known(class_name)
+        spells_known = self._get_spells_known(class_name)
+
+        options_list.remove_children()
+
+        if self.spell_selection_phase == "cantrips":
+            title.update(f"CANTRIPS - Choose {cantrips_known}")
+            cantrip_names = [s.name for s in cantrips]
+
+            for i, spell in enumerate(cantrips):
+                is_selected = spell.name in self.selected_cantrips
+                prefix = "\[X]" if is_selected else "\[ ]"
+                marker = "▸ " if i == self.spell_selected_index else "  "
+                options_list.mount(Static(f"{marker}{prefix} {spell.name}"))
+
+            options_list.mount(Static(""))
+            options_list.mount(Static(f"  Selected: {len(self.selected_cantrips)}/{cantrips_known}"))
+            options_list.mount(Static(""))
+            options_list.mount(Static("  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
+            if len(self.selected_cantrips) >= cantrips_known:
+                options_list.mount(Static("  Press Next to continue to spells"))
+
+            self.current_options = cantrip_names
+
+        else:  # spell_selection_phase == "spells"
+            title.update(f"1ST LEVEL SPELLS - Choose {spells_known}")
+            spell_names = [s.name for s in level1_spells]
+
+            for i, spell in enumerate(level1_spells):
+                is_selected = spell.name in self.selected_spells
+                prefix = "\[X]" if is_selected else "\[ ]"
+                marker = "▸ " if i == self.spell_selected_index else "  "
+                options_list.mount(Static(f"{marker}{prefix} {spell.name}"))
+
+            options_list.mount(Static(""))
+            options_list.mount(Static(f"  Selected: {len(self.selected_spells)}/{spells_known}"))
+            options_list.mount(Static(""))
+            options_list.mount(Static("  ↑↓ navigate, Space/Enter to toggle, \[C] clear all"))
+            if len(self.selected_spells) >= spells_known:
+                options_list.mount(Static("  Press Next to continue"))
+
+            self.current_options = spell_names
+
+        options_list.display = True
+        description.update("")
+
+    def _get_cantrips_known(self, class_name: str) -> int:
+        """Get number of cantrips known at level 1."""
+        # Level 1 cantrips by class (from PHB)
+        cantrips_at_1 = {
+            "Bard": 2,
+            "Cleric": 3,
+            "Druid": 2,
+            "Sorcerer": 4,
+            "Warlock": 2,
+            "Wizard": 3,
+        }
+        return cantrips_at_1.get(class_name, 2)
+
+    def _get_spells_known(self, class_name: str) -> int:
+        """Get number of spells known/prepared at level 1."""
+        # Level 1 spells by class (from PHB)
+        # Note: Clerics/Druids/Paladins prepare spells (WIS/CHA mod + level)
+        # For simplicity, using typical values assuming +3 modifier
+        spells_at_1 = {
+            "Bard": 4,      # Spells known
+            "Cleric": 4,    # Prepared (1 + WIS mod, assume +3)
+            "Druid": 4,     # Prepared (1 + WIS mod, assume +3)
+            "Sorcerer": 2,  # Spells known
+            "Warlock": 2,   # Spells known
+            "Wizard": 6,    # Spellbook has 6, prepare INT mod + 1
+        }
+        return spells_at_1.get(class_name, 2)
+
+    def _toggle_spell(self) -> None:
+        """Toggle the currently highlighted spell selection."""
+        class_name = self.char_data.get("class", "")
+        class_info = get_class_info(class_name)
+        if not class_info or not class_info.spellcasting_ability:
+            return
+
+        from dnd_manager.data import get_spells_by_class
+        available_spells = get_spells_by_class(class_name)
+
+        if self.spell_selection_phase == "cantrips":
+            cantrips = [s for s in available_spells if s.level == 0]
+            if self.spell_selected_index >= len(cantrips):
+                return
+            spell_name = cantrips[self.spell_selected_index].name
+            max_selections = self._get_cantrips_known(class_name)
+
+            if spell_name in self.selected_cantrips:
+                self.selected_cantrips.remove(spell_name)
+            else:
+                if len(self.selected_cantrips) < max_selections:
+                    self.selected_cantrips.append(spell_name)
+                else:
+                    self.notify(f"Already selected {max_selections} cantrips. Deselect one first.", severity="warning")
+                    return
+        else:
+            level1_spells = [s for s in available_spells if s.level == 1]
+            if self.spell_selected_index >= len(level1_spells):
+                return
+            spell_name = level1_spells[self.spell_selected_index].name
+            max_selections = self._get_spells_known(class_name)
+
+            if spell_name in self.selected_spells:
+                self.selected_spells.remove(spell_name)
+            else:
+                if len(self.selected_spells) < max_selections:
+                    self.selected_spells.append(spell_name)
+                else:
+                    self.notify(f"Already selected {max_selections} spells. Deselect one first.", severity="warning")
+                    return
+
+        self._show_spells()
+
+    def _clear_spells(self) -> None:
+        """Clear spell selections for current phase."""
+        if self.spell_selection_phase == "cantrips":
+            self.selected_cantrips = []
+        else:
+            self.selected_spells = []
+        self._show_spells()
+
     # ListNavigationMixin implementation
     @property
     def selected_index(self) -> int:
@@ -1358,9 +1627,25 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             if self._go_back_ability_substep():
                 return  # Handled within abilities step
 
+        # Handle spells step - go back from spells to cantrips
+        if step_name == "spells":
+            class_name = self.char_data.get("class", "")
+            class_info = get_class_info(class_name)
+            if class_info and class_info.spellcasting_ability:
+                if self.spell_selection_phase == "spells":
+                    # Go back to cantrips
+                    self.spell_selection_phase = "cantrips"
+                    self.spell_selected_index = 0
+                    self._show_spells()
+                    return
+
         if self.step > 0:
             self.step -= 1
             self.selected_option = 0
+            # Reset skill/spell indices when going back
+            self.skill_selected_index = 0
+            self.spell_selected_index = 0
+            self.spell_selection_phase = "cantrips"
             self._show_step()
             self._save_draft()
 
@@ -1416,6 +1701,59 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 self._show_step()
                 self._save_draft()
             return
+        elif step_name == "skills":
+            # Validate skill selection
+            class_name = self.char_data.get("class", "")
+            class_info = get_class_info(class_name)
+            if class_info:
+                if len(self.selected_skills) < class_info.skill_choices:
+                    self.notify(f"Select {class_info.skill_choices} skills to continue", severity="warning")
+                    return
+            # Save skills and advance
+            self.char_data["skills"] = list(self.selected_skills)
+            self.step += 1
+            self.selected_option = 0
+            self.spell_selected_index = 0
+            self.spell_selection_phase = "cantrips"
+            self._show_step()
+            self._save_draft()
+            return
+        elif step_name == "spells":
+            # Check if this is a caster
+            class_name = self.char_data.get("class", "")
+            class_info = get_class_info(class_name)
+            if not class_info or not class_info.spellcasting_ability:
+                # Not a caster, just advance
+                self.step += 1
+                self.selected_option = 0
+                self._show_step()
+                self._save_draft()
+                return
+
+            # Validate spell selections based on phase
+            if self.spell_selection_phase == "cantrips":
+                cantrips_needed = self._get_cantrips_known(class_name)
+                if len(self.selected_cantrips) < cantrips_needed:
+                    self.notify(f"Select {cantrips_needed} cantrips to continue", severity="warning")
+                    return
+                # Move to spell selection
+                self.spell_selection_phase = "spells"
+                self.spell_selected_index = 0
+                self._show_spells()
+                return
+            else:  # spells phase
+                spells_needed = self._get_spells_known(class_name)
+                if len(self.selected_spells) < spells_needed:
+                    self.notify(f"Select {spells_needed} spells to continue", severity="warning")
+                    return
+                # Save spells and advance
+                self.char_data["cantrips"] = list(self.selected_cantrips)
+                self.char_data["spells"] = list(self.selected_spells)
+                self.step += 1
+                self.selected_option = 0
+                self._show_step()
+                self._save_draft()
+                return
         elif step_name == "confirm":
             self._create_character()
             return
@@ -1501,6 +1839,33 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                     description=feat_data.description,
                 ))
 
+        # Add skill proficiencies
+        from dnd_manager.models.abilities import Skill, SkillProficiency
+
+        for skill_name in self.selected_skills:
+            # Convert skill name to Skill enum
+            skill_key = skill_name.lower().replace(" ", "_")
+            try:
+                skill_enum = Skill(skill_key)
+                char.proficiencies.skills[skill_enum] = SkillProficiency.PROFICIENT
+            except ValueError:
+                pass  # Skip if not a valid skill
+
+        # Add cantrips and spells for casters
+        class_info = get_class_info(self.char_data["class"])
+        if class_info and class_info.spellcasting_ability:
+            from dnd_manager.models.abilities import Ability as AbilityEnum
+            # Set spellcasting ability
+            ability_name = class_info.spellcasting_ability.lower()
+            try:
+                char.spellcasting.ability = AbilityEnum(ability_name)
+            except ValueError:
+                pass
+
+            # Add cantrips and spells
+            char.spellcasting.cantrips = list(self.selected_cantrips)
+            char.spellcasting.known = list(self.selected_spells)
+
         # Add racial traits from species data
         species = get_species(self.char_data["species"])
         if species:
@@ -1544,6 +1909,18 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
         # Handle ability step special keys
         if step_name == "abilities":
             if self._handle_ability_key(event.key):
+                event.prevent_default()
+                return
+
+        # Handle skills step navigation
+        if step_name == "skills":
+            if self._handle_skills_key(event.key):
+                event.prevent_default()
+                return
+
+        # Handle spells step navigation
+        if step_name == "spells":
+            if self._handle_spells_key(event.key):
                 event.prevent_default()
                 return
 
@@ -1644,6 +2021,68 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                     self.ability_selected_index = 0
                     self._show_ability_substep()
                     return True
+
+        return False
+
+    def _handle_skills_key(self, key: str) -> bool:
+        """Handle special keys for skills step. Returns True if handled."""
+        class_name = self.char_data.get("class", "")
+        class_info = get_class_info(class_name)
+        if not class_info:
+            return False
+
+        skill_options = class_info.skill_options
+
+        if key == "up":
+            if self.skill_selected_index > 0:
+                self.skill_selected_index -= 1
+                self._show_skills()
+            return True
+        elif key == "down":
+            if self.skill_selected_index < len(skill_options) - 1:
+                self.skill_selected_index += 1
+                self._show_skills()
+            return True
+        elif key in ("space", "enter"):
+            self._toggle_skill()
+            return True
+        elif key.lower() == "c":
+            self._clear_skills()
+            return True
+
+        return False
+
+    def _handle_spells_key(self, key: str) -> bool:
+        """Handle special keys for spells step. Returns True if handled."""
+        class_name = self.char_data.get("class", "")
+        class_info = get_class_info(class_name)
+        if not class_info or not class_info.spellcasting_ability:
+            return False
+
+        from dnd_manager.data import get_spells_by_class
+        available_spells = get_spells_by_class(class_name)
+
+        if self.spell_selection_phase == "cantrips":
+            options = [s for s in available_spells if s.level == 0]
+        else:
+            options = [s for s in available_spells if s.level == 1]
+
+        if key == "up":
+            if self.spell_selected_index > 0:
+                self.spell_selected_index -= 1
+                self._show_spells()
+            return True
+        elif key == "down":
+            if self.spell_selected_index < len(options) - 1:
+                self.spell_selected_index += 1
+                self._show_spells()
+            return True
+        elif key in ("space", "enter"):
+            self._toggle_spell()
+            return True
+        elif key.lower() == "c":
+            self._clear_spells()
+            return True
 
         return False
 
