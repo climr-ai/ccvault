@@ -543,6 +543,19 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 if self.selected_spells:
                     options_list.mount(Static(f"  Spells: {', '.join(self.selected_spells)}"))
 
+            # Show proficiencies from class
+            if class_info:
+                options_list.mount(Static(""))
+                options_list.mount(Static("  Proficiencies:"))
+                saves = ", ".join(class_info.saving_throws)
+                options_list.mount(Static(f"    Saving Throws: {saves}"))
+                if class_info.armor_proficiencies:
+                    armor = ", ".join(class_info.armor_proficiencies)
+                    options_list.mount(Static(f"    Armor: {armor}"))
+                if class_info.weapon_proficiencies:
+                    weapons = ", ".join(class_info.weapon_proficiencies)
+                    options_list.mount(Static(f"    Weapons: {weapons}"))
+
             options_list.mount(Static(""))
             options_list.mount(Static("  Press 'Create Character' to finish"))
             options_list.display = True
@@ -1865,7 +1878,7 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 ))
 
         # Add skill proficiencies
-        from dnd_manager.models.abilities import Skill, SkillProficiency
+        from dnd_manager.models.abilities import Skill, SkillProficiency, Ability as AbilityEnum
 
         for skill_name in self.selected_skills:
             # Convert skill name to Skill enum
@@ -1875,6 +1888,21 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 char.proficiencies.skills[skill_enum] = SkillProficiency.PROFICIENT
             except ValueError:
                 pass  # Skip if not a valid skill
+
+        # Add saving throw proficiencies from class
+        class_data = get_class_info(self.char_data["class"])
+        if class_data:
+            for save_name in class_data.saving_throws:
+                try:
+                    ability_enum = AbilityEnum(save_name.lower())
+                    if ability_enum not in char.proficiencies.saving_throws:
+                        char.proficiencies.saving_throws.append(ability_enum)
+                except ValueError:
+                    pass
+
+            # Add weapon and armor proficiencies from class
+            char.proficiencies.weapons = class_data.weapon_proficiencies.copy()
+            char.proficiencies.armor = class_data.armor_proficiencies.copy()
 
         # Add cantrips and spells for casters
         class_info = get_class_info(self.char_data["class"])
