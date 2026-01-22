@@ -295,6 +295,12 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
                 # Skip for 2014 rules (no origin feats)
                 if self.char_data.get("ruleset") == "dnd2014":
                     continue
+            elif step == "spells":
+                # Skip for non-casters
+                class_name = self.char_data.get("class", "")
+                class_info = get_class_info(class_name)
+                if not class_info or not class_info.spellcasting_ability:
+                    continue
             active.append(step)
         return active
 
@@ -360,6 +366,8 @@ class CharacterCreationScreen(ListNavigationMixin, Screen):
             "background": "Background",
             "origin_feat": "Origin Feat",
             "abilities": "Abilities",
+            "skills": "Skills",
+            "spells": "Spells",
             "confirm": "Confirm",
         }
         for i, step in enumerate(self.steps):
