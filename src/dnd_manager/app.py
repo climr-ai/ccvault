@@ -545,6 +545,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
 
         elif step_name == "confirm":
             title.update("CONFIRM CHARACTER")
+            options_list.clear_options()
             options_list.remove_children()
             options_list.mount(Static(f"  Name: {self.char_data['name']}"))
             options_list.mount(Static(f"  Class: {self.char_data['class']}"))
@@ -1482,7 +1483,8 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
 
         title.update(f"SKILL PROFICIENCIES - Choose {num_choices}")
 
-        # Build the display
+        # Build the display - clear both native options and mounted children
+        options_list.clear_options()
         options_list.remove_children()
 
         for i, skill in enumerate(skill_options):
@@ -1566,6 +1568,8 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         cantrips_known = self._get_cantrips_known(class_name)
         spells_known = self._get_spells_known(class_name)
 
+        # Clear both native options and mounted children
+        options_list.clear_options()
         options_list.remove_children()
 
         if self.spell_selection_phase == "cantrips":
