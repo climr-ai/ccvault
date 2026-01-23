@@ -662,31 +662,36 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             "tov": "Tales of the Valiant",
         }.get(ruleset, ruleset)
 
-    def _get_ability_bonuses(self) -> dict[str, int]:
+    def _get_ability_bonuses(self, ability_state: Optional[dict] = None) -> dict[str, int]:
         """Calculate ability bonuses based on ruleset and selections."""
         ruleset = self.char_data.get("ruleset", "dnd2024")
+        state = ability_state or self._get_active_ability_state()
         bonuses: dict[str, int] = {}
         if ruleset == "dnd2014":
             bonuses = self._get_racial_bonuses()
         elif ruleset == "dnd2024":
-            if self.bonus_mode == "spread":
+            bonus_mode = state.get("bonus_mode", self.bonus_mode)
+            bonus_plus_2 = state.get("bonus_plus_2", self.bonus_plus_2)
+            bonus_plus_1 = state.get("bonus_plus_1", self.bonus_plus_1)
+            if bonus_mode == "spread":
                 for opt in self._get_background_bonus_options():
                     bonuses[opt.lower()] = 1
             else:
-                if self.bonus_plus_2:
-                    bonuses[self.bonus_plus_2.lower()] = 2
-                if self.bonus_plus_1:
-                    bonuses[self.bonus_plus_1.lower()] = 1
+                if bonus_plus_2:
+                    bonuses[bonus_plus_2.lower()] = 2
+                if bonus_plus_1:
+                    bonuses[bonus_plus_1.lower()] = 1
         return bonuses
 
     def _get_ability_summary_line(self) -> str:
         """Return a compact ability summary string."""
-        bonuses = self._get_ability_bonuses()
+        ability_state = self._get_active_ability_state()
+        bonuses = self._get_ability_bonuses(ability_state)
         scores_parts = []
         for ability in ABILITIES:
-            idx = self.score_assignments.get(ability)
-            if idx is not None and idx < len(self.base_scores):
-                base = self.base_scores[idx]
+            idx = ability_state["score_assignments"].get(ability)
+            if idx is not None and idx < len(ability_state["base_scores"]):
+                base = ability_state["base_scores"][idx]
                 bonus = bonuses.get(ability, 0)
                 total = base + bonus
                 abbrev = ABILITY_ABBREV[ability]
@@ -702,16 +707,59 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         if not class_info:
             return None
         hit_die_size = int(class_info.hit_die[1:])
-        con_idx = self.score_assignments.get("constitution")
-        if con_idx is None or con_idx >= len(self.base_scores):
+        ability_state = self._get_active_ability_state()
+        con_idx = ability_state["score_assignments"].get("constitution")
+        if con_idx is None or con_idx >= len(ability_state["base_scores"]):
             return None
-        bonuses = self._get_ability_bonuses()
-        base_con = self.base_scores[con_idx]
+        bonuses = self._get_ability_bonuses(ability_state)
+        base_con = ability_state["base_scores"][con_idx]
         con_bonus = bonuses.get("constitution", 0)
         total_con = base_con + con_bonus
         con_mod = (total_con - 10) // 2
         max_hp = max(1, hit_die_size + con_mod)
         return f"HP: {max_hp} ({class_info.hit_die} + {con_mod} CON)"
+
+    def _persist_ability_state(self) -> None:
+        """Persist ability assignment state into char_data for later review."""
+        self.char_data["ability_state"] = {
+            "base_scores": list(self.base_scores),
+            "score_assignments": dict(self.score_assignments),
+            "ability_method": self.ability_method,
+            "bonus_mode": self.bonus_mode,
+            "bonus_plus_2": self.bonus_plus_2,
+            "bonus_plus_1": self.bonus_plus_1,
+        }
+
+    def _get_active_ability_state(self) -> dict:
+        """Return ability state, preferring current in-memory data, with saved fallback."""
+        has_assignments = any(v is not None for v in self.score_assignments.values())
+        if has_assignments and len(self.base_scores) == len(ABILITIES):
+            return {
+                "base_scores": list(self.base_scores),
+                "score_assignments": dict(self.score_assignments),
+                "ability_method": self.ability_method,
+                "bonus_mode": self.bonus_mode,
+                "bonus_plus_2": self.bonus_plus_2,
+                "bonus_plus_1": self.bonus_plus_1,
+            }
+        saved = self.char_data.get("ability_state")
+        if saved:
+            return {
+                "base_scores": list(saved.get("base_scores", self.base_scores)),
+                "score_assignments": dict(saved.get("score_assignments", self.score_assignments)),
+                "ability_method": saved.get("ability_method", self.ability_method),
+                "bonus_mode": saved.get("bonus_mode", self.bonus_mode),
+                "bonus_plus_2": saved.get("bonus_plus_2", self.bonus_plus_2),
+                "bonus_plus_1": saved.get("bonus_plus_1", self.bonus_plus_1),
+            }
+        return {
+            "base_scores": list(self.base_scores),
+            "score_assignments": dict(self.score_assignments),
+            "ability_method": self.ability_method,
+            "bonus_mode": self.bonus_mode,
+            "bonus_plus_2": self.bonus_plus_2,
+            "bonus_plus_1": self.bonus_plus_1,
+        }
 
     def _build_confirm_detail(self, section: str) -> str:
         """Build the right-pane content for confirm sections."""
@@ -1912,6 +1960,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             if not self._advance_ability_substep():
                 return  # Stay on current sub-step
             if self.ability_sub_step is None:
+                self._persist_ability_state()
                 # Finished abilities, move to next step
                 self.ability_sub_step = "method_select"  # Reset for potential re-entry
                 self.step += 1
@@ -2000,30 +2049,20 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         # Set ability scores from wizard data
         ruleset = self.char_data.get("ruleset", "dnd2024")
 
+        ability_state = self._get_active_ability_state()
         # Get base scores from assignments
         base_scores = {}
+        assignments = ability_state["score_assignments"]
+        base_scores_list = ability_state["base_scores"]
         for ability in ABILITIES:
-            idx = self.score_assignments.get(ability)
-            if idx is not None and idx < len(self.base_scores):
-                base_scores[ability] = self.base_scores[idx]
+            idx = assignments.get(ability)
+            if idx is not None and idx < len(base_scores_list):
+                base_scores[ability] = base_scores_list[idx]
             else:
                 base_scores[ability] = 10  # Default
 
         # Get bonuses based on ruleset
-        bonuses = {}
-        if ruleset == "dnd2014":
-            bonuses = self._get_racial_bonuses()
-        elif ruleset == "dnd2024":
-            if self.bonus_mode == "spread":
-                # +1 to each of the three background abilities
-                for opt in self._get_background_bonus_options():
-                    bonuses[opt.lower()] = 1
-            else:
-                # +2/+1 split
-                if self.bonus_plus_2:
-                    bonuses[self.bonus_plus_2.lower()] = 2
-                if self.bonus_plus_1:
-                    bonuses[self.bonus_plus_1.lower()] = 1
+        bonuses = self._get_ability_bonuses(ability_state)
 
         # Create ability scores with bonuses applied
         char.abilities = AbilityScores(
@@ -2070,7 +2109,8 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         # Add skill proficiencies
         from dnd_manager.models.abilities import Skill, SkillProficiency, Ability as AbilityEnum
 
-        for skill_name in self.selected_skills:
+        skills = self.selected_skills or self.char_data.get("skills", [])
+        for skill_name in skills:
             # Convert skill name to Skill enum
             skill_key = skill_name.lower().replace(" ", "_")
             try:
@@ -2915,12 +2955,8 @@ class PreparedSpells(Static):
             yield Static("Press \\[S] to browse spells", classes="empty-state-hint")
             return
 
-        # Show up to 10 prepared spells
-        for spell in prepared[:10]:
+        for spell in prepared:
             yield Static(f"• {spell}")
-
-        if len(prepared) > 10:
-            yield Static(f"  ... +{len(prepared) - 10} more")
 
 
 class DiceRollerScreen(Screen):
@@ -3995,7 +4031,7 @@ class LibraryBrowserScreen(ListNavigationMixin, Screen):
             installed = " ✓" if self.library.is_installed(item.id) else ""
 
             list_widget.mount(ClickableListItem(
-                f"{selected}[{item.content_type.value[:6]}] {item.name[:25]}{installed}",
+                f"{selected}[{item.content_type.value}] {item.name}{installed}",
                 index=i,
                 classes=f"lib-item {'selected' if i == self.selected_index else ''}",
             ))
@@ -4051,10 +4087,8 @@ class LibraryBrowserScreen(ListNavigationMixin, Screen):
         details_widget.mount(Static("  Content Preview:", classes="section-header"))
         import json
         preview = json.dumps(item.content_data, indent=2)
-        for line in preview.split("\n")[:10]:
+        for line in preview.split("\n"):
             details_widget.mount(Static(f"    {line}", classes="content-preview"))
-        if len(preview.split("\n")) > 10:
-            details_widget.mount(Static("    ...", classes="content-preview"))
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle search input changes."""
@@ -5484,16 +5518,12 @@ class SubclassPickerScreen(ListNavigationMixin, Screen):
 
         if subclass.description:
             details_widget.mount(Static("  Description:", classes="section-header"))
-            desc = subclass.description[:200] + "..." if len(subclass.description) > 200 else subclass.description
-            details_widget.mount(Static(f"    {desc}", classes="subclass-desc"))
+            details_widget.mount(Static(f"    {subclass.description}", classes="subclass-desc"))
 
         details_widget.mount(Static(""))
         details_widget.mount(Static("  Features:", classes="section-header"))
-        for feature in subclass.features[:5]:  # Show first 5 features
+        for feature in subclass.features:
             details_widget.mount(Static(f"    Lv{feature.level}: {feature.name}", classes="feature-item"))
-
-        if len(subclass.features) > 5:
-            details_widget.mount(Static(f"    ... and {len(subclass.features) - 5} more", classes="hint"))
 
     # ListNavigationMixin implementation
     def _get_list_items(self) -> list:
@@ -6831,10 +6861,8 @@ class MagicItemBrowserScreen(ListNavigationMixin, Screen):
                 current_line += " " + word if current_line.strip() else "    " + word
         if current_line.strip():
             lines.append(current_line)
-        for line in lines[:15]:  # Limit to first 15 lines
+        for line in lines:
             details_widget.mount(Static(line, classes="item-desc"))
-        if len(lines) > 15:
-            details_widget.mount(Static("    ...", classes="item-desc"))
 
         if item.charges:
             details_widget.mount(Static(""))
@@ -7034,10 +7062,8 @@ class FeaturesScreen(Screen):
                     f"  • Lv{feature.level}: {feature.name}{uses_str}{recharge_str}",
                     classes="feature-item",
                 ))
-                # Show description (truncated)
                 if feature.description:
-                    desc = feature.description[:80] + "..." if len(feature.description) > 80 else feature.description
-                    class_list.mount(Static(f"      {desc}", classes="feature-desc"))
+                    class_list.mount(Static(f"      {feature.description}", classes="feature-desc"))
 
         # Add subclass features if character has a subclass
         if self.character.primary_class.subclass:
@@ -7053,8 +7079,7 @@ class FeaturesScreen(Screen):
                             classes="feature-item",
                         ))
                         if feature.description:
-                            desc = feature.description[:80] + "..." if len(feature.description) > 80 else feature.description
-                            class_list.mount(Static(f"      {desc}", classes="feature-desc"))
+                            class_list.mount(Static(f"      {feature.description}", classes="feature-desc"))
 
         if not data_features:
             class_list.mount(Static(f"  (No features found for {class_name})", classes="no-items"))
@@ -7099,9 +7124,7 @@ class FeaturesScreen(Screen):
             classes="feature-item",
         ))
         if feature.description:
-            # Show truncated description
-            desc = feature.description[:60] + "..." if len(feature.description) > 60 else feature.description
-            container.mount(Static(f"    {desc}", classes="feature-desc"))
+            container.mount(Static(f"    {feature.description}", classes="feature-desc"))
 
     def action_use_feature(self) -> None:
         """Use a feature (expend a use)."""
@@ -7863,9 +7886,7 @@ class SessionNotesScreen(ListNavigationMixin, Screen):
         for i, note in enumerate(self.notes):
             selected = "▶ " if i == self.selected_index else "  "
             date_str = note.session_date.strftime("%Y-%m-%d") if note.session_date else "No date"
-            title = note.title[:30] if note.title else "(Untitled)"
-            if len(note.title) > 30:
-                title += "..."
+            title = note.title if note.title else "(Untitled)"
 
             list_widget.mount(ClickableListItem(
                 f"{selected}{date_str} - {title}",
