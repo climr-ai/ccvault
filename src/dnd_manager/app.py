@@ -2854,7 +2854,7 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
         """Select the current character."""
         if self.characters:
             char_info = self.characters[self.selected_index]
-            self.app.load_character(char_info["path"])
+            self.app.load_character(char_info["path"], keep_current_screen=True)
 
     def on_key(self, event) -> None:
         """Handle letter keys for jump navigation."""
@@ -8427,7 +8427,7 @@ class MainDashboard(ScreenContextMixin, Screen):
 
     def action_back(self) -> None:
         """Return to the previous screen."""
-        self.app.action_open_character(return_to_dashboard=True)
+        self.app.pop_screen()
 
     def action_spells(self) -> None:
         """Open spells screen."""
@@ -9076,15 +9076,18 @@ class DNDManagerApp(App):
 
         self.push_screen(CharacterSelectScreen(char_info, return_to_dashboard=return_to_dashboard))
 
-    def load_character(self, path: Path) -> None:
+    def load_character(self, path: Path, keep_current_screen: bool = False) -> None:
         """Load a character from a path and switch to dashboard."""
         char = self.store.load_path(path)
         if char:
             self.current_character = char
-            # Remove all screens except the base, then push dashboard
-            while len(self.screen_stack) > 1:
-                self.pop_screen()
-            self.push_screen(MainDashboard(char))
+            if keep_current_screen:
+                self.push_screen(MainDashboard(char))
+            else:
+                # Remove all screens except the base, then push dashboard
+                while len(self.screen_stack) > 1:
+                    self.pop_screen()
+                self.push_screen(MainDashboard(char))
         else:
             self.notify("Failed to load character", severity="error")
 
