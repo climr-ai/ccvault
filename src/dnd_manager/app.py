@@ -12,6 +12,7 @@ from textual.widgets import Header, Footer, Static, Button, Label, Input, RichLo
 from textual.widgets.option_list import Option
 from textual.screen import Screen, ModalScreen
 from textual.message import Message
+from rich.text import Text
 
 from dnd_manager.config import Config, get_config_manager
 from dnd_manager.models.character import Character, RulesetId, Feature
@@ -2993,8 +2994,17 @@ class CombatStats(DashboardPanel):
         hp_pct = hp.current / hp.maximum if hp.maximum > 0 else 0
         bar_width = 16
         filled = int(hp_pct * bar_width)
-        bar = "█" * filled + "░" * (bar_width - filled)
-        yield Static(f"HP: {bar} {hp.current}/{hp.maximum}")
+        empty = bar_width - filled
+        bar_text = Text()
+        bar_text.append("HP: ", style="bold")
+        if filled:
+            bar_text.append("█" * filled, style="green")
+        if empty:
+            bar_text.append("░" * empty, style="grey37")
+        bar_text.append(f" {hp.current}/{hp.maximum}", style="white")
+        if hp.temporary:
+            bar_text.append(f" T:{hp.temporary}", style="cyan")
+        yield Static(bar_text)
 
         yield Static(f"Hit Dice: {c.combat.get_hit_dice_display()}")
         yield Static(f"Prof Bonus: +{c.proficiency_bonus}")
