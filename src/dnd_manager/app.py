@@ -458,7 +458,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
 
         # Hide/show elements based on step
         name_input.display = step_name == "name"
-        options_list.display = step_name not in ("name", "confirm")
+        options_list.display = step_name != "name"
 
         # Update buttons
         back_btn = self.query_one("#btn-back", Button)
@@ -547,114 +547,11 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
 
         elif step_name == "confirm":
             title.update("CONFIRM CHARACTER")
-            options_list.clear_options()
-            options_list.remove_children()
-            options_list.add_option(Option(f"  Name: {self.char_data['name']}"))
-            options_list.add_option(Option(f"  Class: {self.char_data['class']}"))
-            species_display = self.char_data['species']
-            if self.char_data.get('subspecies'):
-                species_display += f" ({self.char_data['subspecies']})"
-            options_list.add_option(Option(f"  Species: {species_display}"))
-            if self.char_data.get('species_feat'):
-                options_list.add_option(Option(f"  Bonus Feat: {self.char_data['species_feat']}"))
-            options_list.add_option(Option(f"  Background: {self.char_data['background']}"))
-            if self.char_data.get('origin_feat'):
-                options_list.add_option(Option(f"  Origin Feat: {self.char_data['origin_feat']}"))
-
-            # Show ability scores
-            options_list.add_option(Option(""))
-            ruleset = self.char_data.get("ruleset", "dnd2024")
-            bonuses = {}
-            if ruleset == "dnd2014":
-                bonuses = self._get_racial_bonuses()
-            elif ruleset == "dnd2024":
-                if self.bonus_mode == "spread":
-                    # +1 to each of the three background abilities
-                    for opt in self._get_background_bonus_options():
-                        bonuses[opt.lower()] = 1
-                else:
-                    # +2/+1 split
-                    if self.bonus_plus_2:
-                        bonuses[self.bonus_plus_2.lower()] = 2
-                    if self.bonus_plus_1:
-                        bonuses[self.bonus_plus_1.lower()] = 1
-
-            scores_parts = []
-            for ability in ABILITIES:
-                idx = self.score_assignments.get(ability)
-                if idx is not None and idx < len(self.base_scores):
-                    base = self.base_scores[idx]
-                    bonus = bonuses.get(ability, 0)
-                    total = base + bonus
-                    abbrev = ABILITY_ABBREV[ability]
-                    if bonus > 0:
-                        scores_parts.append(f"{abbrev}:{total}(+{bonus})")
-                    else:
-                        scores_parts.append(f"{abbrev}:{total}")
-            options_list.add_option(Option(f"  Abilities: {' '.join(scores_parts)}"))
-
-            # Calculate and show HP preview
-            class_name = self.char_data.get("class", "")
-            class_info = get_class_info(class_name)
-            if class_info:
-                hit_die_size = int(class_info.hit_die[1:])
-                # Calculate CON modifier from assigned scores
-                con_idx = self.score_assignments.get("constitution")
-                if con_idx is not None and con_idx < len(self.base_scores):
-                    base_con = self.base_scores[con_idx]
-                    con_bonus = bonuses.get("constitution", 0)
-                    total_con = base_con + con_bonus
-                    con_mod = (total_con - 10) // 2
-                    max_hp = max(1, hit_die_size + con_mod)
-                    options_list.add_option(Option(f"  HP: {max_hp} ({class_info.hit_die} + {con_mod} CON)"))
-
-            # Show skills
-            if self.selected_skills:
-                options_list.add_option(Option(f"  Skills: {', '.join(self.selected_skills)}"))
-
-            # Show spells for casters
-            class_name = self.char_data.get("class", "")
-            class_info = get_class_info(class_name)
-            if class_info and class_info.spellcasting_ability:
-                if self.selected_cantrips:
-                    options_list.add_option(Option(f"  Cantrips: {', '.join(self.selected_cantrips)}"))
-                if self.selected_spells:
-                    options_list.add_option(Option(f"  Spells: {', '.join(self.selected_spells)}"))
-
-            # Show proficiencies from class
-            if class_info:
-                options_list.add_option(Option(""))
-                options_list.add_option(Option("  Proficiencies:"))
-                saves = ", ".join(class_info.saving_throws)
-                options_list.add_option(Option(f"    Saving Throws: {saves}"))
-                if class_info.armor_proficiencies:
-                    armor = ", ".join(class_info.armor_proficiencies)
-                    options_list.add_option(Option(f"    Armor: {armor}"))
-                if class_info.weapon_proficiencies:
-                    weapons = ", ".join(class_info.weapon_proficiencies)
-                    options_list.add_option(Option(f"    Weapons: {weapons}"))
-
-                # Show starting equipment preview
-                options_list.add_option(Option(""))
-                equipment = self._get_starting_equipment(class_name)
-                # Count duplicates
-                from collections import Counter
-                equip_counts = Counter(equipment)
-                equip_display = []
-                for item, count in equip_counts.items():
-                    if count > 1:
-                        equip_display.append(f"{item} x{count}")
-                    else:
-                        equip_display.append(item)
-                options_list.add_option(Option(f"  Equipment: {', '.join(equip_display[:5])}"))
-                if len(equip_display) > 5:
-                    options_list.add_option(Option(f"            {', '.join(equip_display[5:])}"))
-                options_list.add_option(Option("  Starting Gold: 10 gp"))
-
-            options_list.add_option(Option(""))
-            options_list.add_option(Option("  Press 'Create Character' to finish"))
+            description.update("Select a section to review. Press Create Character to finish.")
+            self.current_options = self._build_confirm_sections()
+            self.selected_option = min(self.selected_option, max(0, len(self.current_options) - 1))
+            self._refresh_options()
             options_list.display = True
-            description.update("")
 
     def _refresh_options(self) -> None:
         """Rebuild the options list. Only call on step transitions, not navigation."""
@@ -690,7 +587,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         step_name = self.steps[self.step] if self.step < len(self.steps) else ""
 
         # Hide detail panel on steps without options
-        if step_name in ("name", "abilities", "confirm"):
+        if step_name in ("name", "abilities"):
             detail_panel.display = False
             return
 
@@ -730,9 +627,172 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             else:
                 detail_title.update(skill_name)
             detail_content.update(description or "No description available.")
+        elif step_name == "confirm":
+            section = self.current_options[self.selected_option]
+            detail_title.update(section)
+            detail_content.update(self._build_confirm_detail(section))
         else:
             detail_title.update(selected_name)
             detail_content.update("")
+
+    def _build_confirm_sections(self) -> list[str]:
+        """Build the left-pane section list for the confirm step."""
+        sections = [
+            "Overall Summary",
+            "Ruleset",
+            "Name",
+            "Class",
+            "Species",
+            "Background",
+            "Abilities",
+            "Skills",
+        ]
+        class_info = get_class_info(self.char_data.get("class", ""))
+        if class_info and class_info.spellcasting_ability:
+            sections.append("Spells")
+        sections.extend(["Proficiencies", "Equipment"])
+        return sections
+
+    def _get_ruleset_label(self) -> str:
+        """Return a display label for the selected ruleset."""
+        ruleset = self.char_data.get("ruleset", "dnd2024")
+        return {
+            "dnd2024": "D&D 2024 (5.5e)",
+            "dnd2014": "D&D 2014 (5e)",
+            "tov": "Tales of the Valiant",
+        }.get(ruleset, ruleset)
+
+    def _get_ability_bonuses(self) -> dict[str, int]:
+        """Calculate ability bonuses based on ruleset and selections."""
+        ruleset = self.char_data.get("ruleset", "dnd2024")
+        bonuses: dict[str, int] = {}
+        if ruleset == "dnd2014":
+            bonuses = self._get_racial_bonuses()
+        elif ruleset == "dnd2024":
+            if self.bonus_mode == "spread":
+                for opt in self._get_background_bonus_options():
+                    bonuses[opt.lower()] = 1
+            else:
+                if self.bonus_plus_2:
+                    bonuses[self.bonus_plus_2.lower()] = 2
+                if self.bonus_plus_1:
+                    bonuses[self.bonus_plus_1.lower()] = 1
+        return bonuses
+
+    def _get_ability_summary_line(self) -> str:
+        """Return a compact ability summary string."""
+        bonuses = self._get_ability_bonuses()
+        scores_parts = []
+        for ability in ABILITIES:
+            idx = self.score_assignments.get(ability)
+            if idx is not None and idx < len(self.base_scores):
+                base = self.base_scores[idx]
+                bonus = bonuses.get(ability, 0)
+                total = base + bonus
+                abbrev = ABILITY_ABBREV[ability]
+                if bonus > 0:
+                    scores_parts.append(f"{abbrev}:{total}(+{bonus})")
+                else:
+                    scores_parts.append(f"{abbrev}:{total}")
+        return f"Abilities: {' '.join(scores_parts)}" if scores_parts else "Abilities: -"
+
+    def _get_hp_summary_line(self) -> Optional[str]:
+        """Return an HP preview line if possible."""
+        class_info = get_class_info(self.char_data.get("class", ""))
+        if not class_info:
+            return None
+        hit_die_size = int(class_info.hit_die[1:])
+        con_idx = self.score_assignments.get("constitution")
+        if con_idx is None or con_idx >= len(self.base_scores):
+            return None
+        bonuses = self._get_ability_bonuses()
+        base_con = self.base_scores[con_idx]
+        con_bonus = bonuses.get("constitution", 0)
+        total_con = base_con + con_bonus
+        con_mod = (total_con - 10) // 2
+        max_hp = max(1, hit_die_size + con_mod)
+        return f"HP: {max_hp} ({class_info.hit_die} + {con_mod} CON)"
+
+    def _build_confirm_detail(self, section: str) -> str:
+        """Build the right-pane content for confirm sections."""
+        lines: list[str] = []
+        class_name = self.char_data.get("class", "")
+        class_info = get_class_info(class_name)
+
+        if section == "Overall Summary":
+            lines.append(f"Ruleset: {self._get_ruleset_label()}")
+            lines.append(f"Name: {self.char_data.get('name', '')}")
+            lines.append(f"Class: {self.char_data.get('class', '')}")
+            species_display = self.char_data.get("species", "")
+            if self.char_data.get("subspecies"):
+                species_display += f" ({self.char_data.get('subspecies')})"
+            lines.append(f"Species: {species_display}")
+            if self.char_data.get("species_feat"):
+                lines.append(f"Bonus Feat: {self.char_data.get('species_feat')}")
+            lines.append(f"Background: {self.char_data.get('background', '')}")
+            if self.char_data.get("origin_feat"):
+                lines.append(f"Origin Feat: {self.char_data.get('origin_feat')}")
+            lines.append(self._get_ability_summary_line())
+            hp_line = self._get_hp_summary_line()
+            if hp_line:
+                lines.append(hp_line)
+            lines.append(f"Skills: {', '.join(self.selected_skills) if self.selected_skills else 'None'}")
+            if class_info and class_info.spellcasting_ability:
+                lines.append(f"Cantrips: {', '.join(self.selected_cantrips) if self.selected_cantrips else 'None'}")
+                lines.append(f"Spells: {', '.join(self.selected_spells) if self.selected_spells else 'None'}")
+            if class_info:
+                lines.append(f"Saving Throws: {', '.join(class_info.saving_throws)}")
+                if class_info.armor_proficiencies:
+                    lines.append(f"Armor: {', '.join(class_info.armor_proficiencies)}")
+                if class_info.weapon_proficiencies:
+                    lines.append(f"Weapons: {', '.join(class_info.weapon_proficiencies)}")
+                equipment = self._get_starting_equipment(class_name)
+                lines.append(f"Equipment: {', '.join(equipment) if equipment else 'None'}")
+                lines.append("Starting Gold: 10 gp")
+            return "\n".join(lines)
+
+        if section == "Ruleset":
+            lines.append(self._get_ruleset_label())
+        elif section == "Name":
+            lines.append(self.char_data.get("name", ""))
+        elif section == "Class":
+            lines.append(self.char_data.get("class", ""))
+        elif section == "Species":
+            species_display = self.char_data.get("species", "")
+            if self.char_data.get("subspecies"):
+                species_display += f" ({self.char_data.get('subspecies')})"
+            lines.append(species_display)
+            if self.char_data.get("species_feat"):
+                lines.append(f"Bonus Feat: {self.char_data.get('species_feat')}")
+        elif section == "Background":
+            lines.append(self.char_data.get("background", ""))
+            if self.char_data.get("origin_feat"):
+                lines.append(f"Origin Feat: {self.char_data.get('origin_feat')}")
+        elif section == "Abilities":
+            lines.append(self._get_ability_summary_line())
+            hp_line = self._get_hp_summary_line()
+            if hp_line:
+                lines.append(hp_line)
+        elif section == "Skills":
+            lines.append(", ".join(self.selected_skills) if self.selected_skills else "None selected.")
+        elif section == "Spells":
+            lines.append(f"Cantrips: {', '.join(self.selected_cantrips) if self.selected_cantrips else 'None'}")
+            lines.append(f"Spells: {', '.join(self.selected_spells) if self.selected_spells else 'None'}")
+        elif section == "Proficiencies":
+            if class_info:
+                lines.append(f"Saving Throws: {', '.join(class_info.saving_throws)}")
+                if class_info.armor_proficiencies:
+                    lines.append(f"Armor: {', '.join(class_info.armor_proficiencies)}")
+                if class_info.weapon_proficiencies:
+                    lines.append(f"Weapons: {', '.join(class_info.weapon_proficiencies)}")
+            else:
+                lines.append("No class proficiencies available.")
+        elif section == "Equipment":
+            equipment = self._get_starting_equipment(class_name)
+            lines.append(", ".join(equipment) if equipment else "None")
+            lines.append("Starting Gold: 10 gp")
+
+        return "\n".join(lines)
 
     def _show_ruleset_details(self, ruleset_name: str, title: Static, content: Static) -> None:
         """Show details for a ruleset."""
