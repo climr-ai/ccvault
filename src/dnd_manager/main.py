@@ -60,6 +60,15 @@ def create_parser() -> argparse.ArgumentParser:
     show_parser = subparsers.add_parser("show", help="Show character summary")
     show_parser.add_argument("name", help="Character name")
 
+    # Delete command
+    delete_parser = subparsers.add_parser("delete", help="Delete a character")
+    delete_parser.add_argument("name", help="Character name")
+    delete_parser.add_argument(
+        "-f", "--force",
+        action="store_true",
+        help="Delete without confirmation",
+    )
+
     # Export command
     export_parser = subparsers.add_parser("export", help="Export character to Markdown or PDF")
     export_parser.add_argument("name", help="Character name")
@@ -408,6 +417,29 @@ def cmd_new(name: str, char_class: str, level: int) -> int:
     print(f"  Saved to: {path}")
 
     return 0
+
+
+def cmd_delete(name: str, force: bool) -> int:
+    """Delete a character with confirmation."""
+    store = CharacterStore()
+
+    if not store.exists(name):
+        print(f"Error: Character '{name}' not found.")
+        return 1
+
+    if not force:
+        print(f"Type the character name to confirm deletion: {name}")
+        confirmation = input("> ").strip()
+        if confirmation != name:
+            print("Deletion cancelled (name did not match).")
+            return 1
+
+    if store.delete(name):
+        print(f"Deleted character: {name}")
+        return 0
+
+    print("Error: Failed to delete character.")
+    return 1
 
 
 def cmd_export(name: str, output: Optional[Path], format: str) -> int:
@@ -1578,6 +1610,9 @@ def main() -> int:
 
     if args.command == "show":
         return cmd_show(args.name)
+
+    if args.command == "delete":
+        return cmd_delete(args.name, args.force)
 
     if args.command == "export":
         return cmd_export(args.name, args.output, args.format)

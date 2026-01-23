@@ -2682,6 +2682,56 @@ class CharacterListItem(Static):
         self.post_message(self.Selected(self.item_index))
 
 
+class DeleteCharacterModal(ModalScreen):
+    """Modal confirmation for deleting a character."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("enter", "confirm", "Delete"),
+    ]
+
+    def __init__(self, character_name: str, on_confirm, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character_name = character_name
+        self.on_confirm = on_confirm
+
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Static("Delete Character", classes="title"),
+            Static(
+                f"Type the character name to confirm deletion:\n\n  {self.character_name}",
+                classes="subtitle",
+            ),
+            Input(placeholder="Type character name...", id="delete-confirm-input"),
+            Horizontal(
+                Button("Cancel", id="btn-cancel", variant="default"),
+                Button("Delete", id="btn-delete", variant="error"),
+                classes="button-row",
+            ),
+            id="delete-confirm-container",
+        )
+
+    def on_mount(self) -> None:
+        self.query_one("#delete-confirm-input", Input).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-cancel":
+            self.action_cancel()
+        elif event.button.id == "btn-delete":
+            self.action_confirm()
+
+    def action_cancel(self) -> None:
+        self.app.pop_screen()
+
+    def action_confirm(self) -> None:
+        value = self.query_one("#delete-confirm-input", Input).value.strip()
+        if value != self.character_name:
+            self.notify("Name does not match. Deletion cancelled.", severity="warning")
+            return
+        self.on_confirm()
+        self.app.pop_screen()
+
+
 class CharacterSelectScreen(ListNavigationMixin, Screen):
     """Screen for selecting a character to load."""
 
@@ -2689,6 +2739,7 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
         Binding("escape", "cancel", "Cancel"),
         Binding("q", "cancel", "Cancel"),
         Binding("n", "new_character", "New Character"),
+        Binding("d", "delete_character", "Delete Character"),
     ]
 
     def __init__(self, characters: list[dict], return_to_dashboard: bool = False, **kwargs) -> None:
@@ -2703,7 +2754,7 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
         yield Header()
         yield Container(
             Static("Select a Character", classes="title"),
-            Static("↑/↓ Navigate  Type to jump  Enter Select  Esc Cancel", classes="subtitle"),
+            Static("↑/↓ Navigate  Type to jump  Enter Select  D Delete  Esc Cancel", classes="subtitle"),
             VerticalScroll(id="character-list"),
             id="select-container",
         )
@@ -2711,7 +2762,12 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
 
     def on_mount(self) -> None:
         """Populate the character list."""
+        self._refresh_character_list()
+
+    def _refresh_character_list(self) -> None:
+        """Refresh the character list display."""
         list_container = self.query_one("#character-list", VerticalScroll)
+        list_container.remove_children()
         for i, char_info in enumerate(self.characters):
             item = CharacterListItem(char_info, index=i, id=f"char-{i}", classes="char-item")
             if i == 0:
@@ -2747,14 +2803,44 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
     def action_cancel(self) -> None:
         """Return to welcome screen."""
         self.app.pop_screen()
-        if self._return_to_dashboard and self.app.current_character:
-            if not isinstance(self.app.screen, MainDashboard):
-                self.app.push_screen(MainDashboard(self.app.current_character))
+        if self._return_to_dashboard:
+            if self.app.current_character:
+                if not isinstance(self.app.screen, MainDashboard):
+                    self.app.push_screen(MainDashboard(self.app.current_character))
+            else:
+                self.app.push_screen(WelcomeScreen())
 
     def action_new_character(self) -> None:
         """Create new character instead."""
         self.app.pop_screen()
         self.app.action_new_character()
+
+    def action_delete_character(self) -> None:
+        """Delete the selected character with confirmation."""
+        if not self.characters:
+            self.notify("No characters to delete", severity="warning")
+            return
+        selected = self.characters[self.selected_index]
+        name = selected["name"]
+
+        def on_confirm():
+            deleted = self.app.store.delete(name)
+            if deleted:
+                if self.app.current_character and self.app.current_character.name == name:
+                    self.app.current_character = None
+                self.notify(f"Deleted character: {name}")
+                self.characters = self.app.store.get_character_info()
+                if self.selected_index >= len(self.characters):
+                    self.selected_index = max(0, len(self.characters) - 1)
+                self._refresh_character_list()
+                if not self.characters:
+                    self.app.pop_screen()
+                    if self._return_to_dashboard:
+                        self.app.push_screen(WelcomeScreen())
+            else:
+                self.notify("Character not found", severity="warning")
+
+        self.app.push_screen(DeleteCharacterModal(name, on_confirm))
 
     def key_up(self) -> None:
         """Move selection up."""
