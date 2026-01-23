@@ -8250,7 +8250,7 @@ class MainDashboard(ScreenContextMixin, Screen):
     """Main character dashboard screen."""
 
     BINDINGS = [
-        Binding("escape", "open_character", "Characters"),
+        Binding("escape", "back", "Back"),
         Binding("q", "open_character", "Characters"),
         Binding("?", "help", "Help"),
         Binding("s", "spells", "Spells"),
@@ -8337,7 +8337,11 @@ class MainDashboard(ScreenContextMixin, Screen):
 
     def action_open_character(self) -> None:
         """Open an existing character."""
-        self.app.action_open_character()
+        self.app.action_open_character(return_to_dashboard=True)
+
+    def action_back(self) -> None:
+        """Return to the previous screen."""
+        self.app.pop_screen()
 
     def action_spells(self) -> None:
         """Open spells screen."""
