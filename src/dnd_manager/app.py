@@ -2217,24 +2217,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
 
     def _handle_skills_key(self, key: str) -> bool:
         """Handle special keys for skills step. Returns True if handled."""
-        class_name = self.char_data.get("class", "")
-        class_info = get_class_info(class_name)
-        if not class_info:
-            return False
-
-        skill_options = class_info.skill_options
-
-        if key == "up":
-            if self.skill_selected_index > 0:
-                self.skill_selected_index -= 1
-                self._show_skills()
-            return True
-        elif key == "down":
-            if self.skill_selected_index < len(skill_options) - 1:
-                self.skill_selected_index += 1
-                self._show_skills()
-            return True
-        elif key == "space":
+        if key == "space":
             self._toggle_skill()
             return True
         elif key.lower() == "c":
