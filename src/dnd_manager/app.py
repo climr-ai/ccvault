@@ -549,20 +549,20 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             title.update("CONFIRM CHARACTER")
             options_list.clear_options()
             options_list.remove_children()
-            options_list.mount(Static(f"  Name: {self.char_data['name']}"))
-            options_list.mount(Static(f"  Class: {self.char_data['class']}"))
+            options_list.add_option(Option(f"  Name: {self.char_data['name']}"))
+            options_list.add_option(Option(f"  Class: {self.char_data['class']}"))
             species_display = self.char_data['species']
             if self.char_data.get('subspecies'):
                 species_display += f" ({self.char_data['subspecies']})"
-            options_list.mount(Static(f"  Species: {species_display}"))
+            options_list.add_option(Option(f"  Species: {species_display}"))
             if self.char_data.get('species_feat'):
-                options_list.mount(Static(f"  Bonus Feat: {self.char_data['species_feat']}"))
-            options_list.mount(Static(f"  Background: {self.char_data['background']}"))
+                options_list.add_option(Option(f"  Bonus Feat: {self.char_data['species_feat']}"))
+            options_list.add_option(Option(f"  Background: {self.char_data['background']}"))
             if self.char_data.get('origin_feat'):
-                options_list.mount(Static(f"  Origin Feat: {self.char_data['origin_feat']}"))
+                options_list.add_option(Option(f"  Origin Feat: {self.char_data['origin_feat']}"))
 
             # Show ability scores
-            options_list.mount(Static(""))
+            options_list.add_option(Option(""))
             ruleset = self.char_data.get("ruleset", "dnd2024")
             bonuses = {}
             if ruleset == "dnd2014":
@@ -591,7 +591,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                         scores_parts.append(f"{abbrev}:{total}(+{bonus})")
                     else:
                         scores_parts.append(f"{abbrev}:{total}")
-            options_list.mount(Static(f"  Abilities: {' '.join(scores_parts)}"))
+            options_list.add_option(Option(f"  Abilities: {' '.join(scores_parts)}"))
 
             # Calculate and show HP preview
             class_name = self.char_data.get("class", "")
@@ -606,36 +606,36 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                     total_con = base_con + con_bonus
                     con_mod = (total_con - 10) // 2
                     max_hp = max(1, hit_die_size + con_mod)
-                    options_list.mount(Static(f"  HP: {max_hp} ({class_info.hit_die} + {con_mod} CON)"))
+                    options_list.add_option(Option(f"  HP: {max_hp} ({class_info.hit_die} + {con_mod} CON)"))
 
             # Show skills
             if self.selected_skills:
-                options_list.mount(Static(f"  Skills: {', '.join(self.selected_skills)}"))
+                options_list.add_option(Option(f"  Skills: {', '.join(self.selected_skills)}"))
 
             # Show spells for casters
             class_name = self.char_data.get("class", "")
             class_info = get_class_info(class_name)
             if class_info and class_info.spellcasting_ability:
                 if self.selected_cantrips:
-                    options_list.mount(Static(f"  Cantrips: {', '.join(self.selected_cantrips)}"))
+                    options_list.add_option(Option(f"  Cantrips: {', '.join(self.selected_cantrips)}"))
                 if self.selected_spells:
-                    options_list.mount(Static(f"  Spells: {', '.join(self.selected_spells)}"))
+                    options_list.add_option(Option(f"  Spells: {', '.join(self.selected_spells)}"))
 
             # Show proficiencies from class
             if class_info:
-                options_list.mount(Static(""))
-                options_list.mount(Static("  Proficiencies:"))
+                options_list.add_option(Option(""))
+                options_list.add_option(Option("  Proficiencies:"))
                 saves = ", ".join(class_info.saving_throws)
-                options_list.mount(Static(f"    Saving Throws: {saves}"))
+                options_list.add_option(Option(f"    Saving Throws: {saves}"))
                 if class_info.armor_proficiencies:
                     armor = ", ".join(class_info.armor_proficiencies)
-                    options_list.mount(Static(f"    Armor: {armor}"))
+                    options_list.add_option(Option(f"    Armor: {armor}"))
                 if class_info.weapon_proficiencies:
                     weapons = ", ".join(class_info.weapon_proficiencies)
-                    options_list.mount(Static(f"    Weapons: {weapons}"))
+                    options_list.add_option(Option(f"    Weapons: {weapons}"))
 
                 # Show starting equipment preview
-                options_list.mount(Static(""))
+                options_list.add_option(Option(""))
                 equipment = self._get_starting_equipment(class_name)
                 # Count duplicates
                 from collections import Counter
@@ -646,13 +646,13 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                         equip_display.append(f"{item} x{count}")
                     else:
                         equip_display.append(item)
-                options_list.mount(Static(f"  Equipment: {', '.join(equip_display[:5])}"))
+                options_list.add_option(Option(f"  Equipment: {', '.join(equip_display[:5])}"))
                 if len(equip_display) > 5:
-                    options_list.mount(Static(f"            {', '.join(equip_display[5:])}"))
-                options_list.mount(Static("  Starting Gold: 10 gp"))
+                    options_list.add_option(Option(f"            {', '.join(equip_display[5:])}"))
+                options_list.add_option(Option("  Starting Gold: 10 gp"))
 
-            options_list.mount(Static(""))
-            options_list.mount(Static("  Press 'Create Character' to finish"))
+            options_list.add_option(Option(""))
+            options_list.add_option(Option("  Press 'Create Character' to finish"))
             options_list.display = True
             description.update("")
 
