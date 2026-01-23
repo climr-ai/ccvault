@@ -1,6 +1,6 @@
 [project]
 name = "ccvault"
-version = "0.1.19"
+version = "0.1.20"
 description = "CLIMR Character Vault - A CLI-based D&D 5e character manager supporting 2014 PHB, 2024 PHB, and Tales of the Valiant rulesets"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,7 +25,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pydantic>=2.0",
     "jinja2>=3.1",
-    "google-generativeai>=0.8",
+    "google-genai>=1.0",
     "anthropic>=0.40",
     "openai>=1.0",
     "ollama>=0.4",

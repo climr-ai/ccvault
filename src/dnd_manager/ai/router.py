@@ -161,11 +161,10 @@ class GeminiRouter(AIProvider):
         """Lazy-load the Gemini client."""
         if self._client is None:
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=self._api_key)
-                self._client = genai
+                from google import genai
+                self._client = genai.Client(api_key=self._api_key)
             except ImportError:
-                raise ImportError("google-generativeai not installed. Run: pip install google-generativeai")
+                raise ImportError("google-genai not installed. Run: pip install google-genai")
         return self._client
 
     @property
@@ -193,11 +192,13 @@ class GeminiRouter(AIProvider):
         This is cheap (high quota) so we can afford to call it for every query.
         """
         try:
-            genai = self._get_client()
-            model = genai.GenerativeModel(self.CLASSIFIER_MODEL)
+            client = self._get_client()
             prompt = CLASSIFICATION_PROMPT.format(query=query)
 
-            response = await model.generate_content_async(prompt)
+            response = await client.aio.models.generate_content(
+                model=self.CLASSIFIER_MODEL,
+                contents=prompt,
+            )
             result = response.text.strip().lower()
 
             # Parse response
@@ -232,40 +233,39 @@ class GeminiRouter(AIProvider):
         temperature: float,
     ) -> AIResponse:
         """Call a specific model with rate limit handling."""
-        genai = self._get_client()
+        from google.genai import types
+
+        client = self._get_client()
         quota = self._state.get_quota(model)
 
-        # Extract system prompt and history
+        # Extract system prompt and contents
         system_instruction = None
-        history = []
+        contents = []
 
         for msg in messages:
             if msg.role == MessageRole.SYSTEM:
                 system_instruction = msg.content
             elif msg.role == MessageRole.USER:
-                history.append({"role": "user", "parts": [msg.content]})
+                contents.append({"role": "user", "parts": [{"text": msg.content}]})
             elif msg.role == MessageRole.ASSISTANT:
-                history.append({"role": "model", "parts": [msg.content]})
+                contents.append({"role": "model", "parts": [{"text": msg.content}]})
 
         try:
-            gen_model = genai.GenerativeModel(
-                model_name=model,
+            config = types.GenerateContentConfig(
                 system_instruction=system_instruction,
-                generation_config=genai.GenerationConfig(
-                    max_output_tokens=max_tokens,
-                    temperature=temperature,
-                ),
+                max_output_tokens=max_tokens,
+                temperature=temperature,
             )
 
-            chat_history = history[:-1] if history else []
-            chat = gen_model.start_chat(history=chat_history)
-            last_message = history[-1]["parts"][0] if history else ""
-
-            response = await chat.send_message_async(last_message)
+            response = await client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
             quota.record_request()
 
             return AIResponse(
-                content=response.text,
+                content=response.text or "",
                 model=model,
                 provider=self.name,
                 finish_reason="stop",
@@ -332,6 +332,8 @@ class GeminiRouter(AIProvider):
         temperature: float = 0.7,
     ) -> AsyncIterator[str]:
         """Stream chat response with intelligent routing."""
+        from google.genai import types
+
         # Get the user's query for classification
         user_messages = [m for m in messages if m.role == MessageRole.USER]
         query = user_messages[-1].content if user_messages else ""
@@ -345,38 +347,33 @@ class GeminiRouter(AIProvider):
         else:
             selected_model = self._select_model(QueryComplexity.MODERATE)
 
-        genai = self._get_client()
+        client = self._get_client()
         quota = self._state.get_quota(selected_model)
 
         # Extract messages
         system_instruction = None
-        history = []
+        contents = []
         for msg in messages:
             if msg.role == MessageRole.SYSTEM:
                 system_instruction = msg.content
             elif msg.role == MessageRole.USER:
-                history.append({"role": "user", "parts": [msg.content]})
+                contents.append({"role": "user", "parts": [{"text": msg.content}]})
             elif msg.role == MessageRole.ASSISTANT:
-                history.append({"role": "model", "parts": [msg.content]})
+                contents.append({"role": "model", "parts": [{"text": msg.content}]})
 
-        gen_model = genai.GenerativeModel(
-            model_name=selected_model,
+        config = types.GenerateContentConfig(
             system_instruction=system_instruction,
-            generation_config=genai.GenerationConfig(
-                max_output_tokens=max_tokens,
-                temperature=temperature,
-            ),
+            max_output_tokens=max_tokens,
+            temperature=temperature,
         )
 
-        chat_history = history[:-1] if history else []
-        chat = gen_model.start_chat(history=chat_history)
-        last_message = history[-1]["parts"][0] if history else ""
-
         try:
-            response = await chat.send_message_async(last_message, stream=True)
-            quota.record_request()
-
-            async for chunk in response:
+            async for chunk in client.aio.models.generate_content_stream(
+                model=selected_model,
+                contents=contents,
+                config=config,
+            ):
+                quota.record_request()
                 if chunk.text:
                     yield chunk.text
         except Exception as e:
