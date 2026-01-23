@@ -2769,7 +2769,7 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
         list_container = self.query_one("#character-list", VerticalScroll)
         list_container.remove_children()
         for i, char_info in enumerate(self.characters):
-            item = CharacterListItem(char_info, index=i, id=f"char-{i}", classes="char-item")
+            item = CharacterListItem(char_info, index=i, classes="char-item")
             if i == 0:
                 item.add_class("selected")
             list_container.mount(item)
