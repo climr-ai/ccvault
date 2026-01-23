@@ -26,7 +26,9 @@ from dnd_manager.data import (
     get_background,
     get_class_info,
     get_feat,
+    get_skill_description,
     species_grants_feat,
+    skill_name_to_enum,
 )
 from dnd_manager.data.backgrounds import get_origin_feat_for_background
 
@@ -715,6 +717,19 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             self._show_background_details(selected_name, detail_title, detail_content)
         elif step_name == "origin_feat":
             self._show_feat_details(selected_name, detail_title, detail_content)
+        elif step_name == "skills":
+            ruleset = self.char_data.get("ruleset")
+            skill_name = self.current_options[self.selected_option]
+            description = get_skill_description(skill_name, ruleset)
+            skill_enum = skill_name_to_enum(skill_name)
+            if skill_enum:
+                from dnd_manager.models.abilities import SKILL_ABILITY_MAP
+
+                ability = SKILL_ABILITY_MAP[skill_enum].abbreviation
+                detail_title.update(f"{skill_name} ({ability})")
+            else:
+                detail_title.update(skill_name)
+            detail_content.update(description or "No description available.")
         else:
             detail_title.update(selected_name)
             detail_content.update("")
@@ -1487,6 +1502,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             options_list.add_option(Option(f"{prefix} {skill}", id=f"skill_{i}"))
 
         if skill_options:
+            self.selected_option = min(self.skill_selected_index, len(skill_options) - 1)
             self._expected_highlight = self.skill_selected_index
             options_list.highlighted = self.skill_selected_index
 
@@ -1497,6 +1513,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         if selected_count == num_choices:
             hint = f"{hint}\nPress Next to continue."
         description.update(f"Selected: {selected_count}/{num_choices}\n{hint}")
+        self._refresh_details()
 
     def _toggle_skill(self) -> None:
         """Toggle the currently highlighted skill selection."""
@@ -2305,6 +2322,9 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
 
             self.selected_option = new_index
             self._expected_highlight = new_index  # Update expected for future events
+            step_name = self.steps[self.step] if self.step < len(self.steps) else ""
+            if step_name == "skills":
+                self.skill_selected_index = new_index
             self._refresh_details()
 
             # Scroll to center the highlighted item

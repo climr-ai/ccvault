@@ -210,6 +210,11 @@ from dnd_manager.data.subclasses import (
     get_subclass_spells_up_to_level,
 )
 
+from dnd_manager.data.skills import (
+    get_skill_description,
+    skill_name_to_enum,
+)
+
 from dnd_manager.data.magic_items import (
     MagicItem,
     RARITY_MIN_LEVELS,
@@ -432,6 +437,9 @@ __all__ = [
     "validate_all_subclass_spells",
     "get_subclass_spells_at_level",
     "get_subclass_spells_up_to_level",
+    # Skills
+    "get_skill_description",
+    "skill_name_to_enum",
     # Magic Items
     "MagicItem",
     "COMMON_ITEMS",
