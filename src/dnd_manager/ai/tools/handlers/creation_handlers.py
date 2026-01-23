@@ -4,6 +4,7 @@ These handlers work with a CreationSession that holds the character being create
 They don't require an existing character - they create one from scratch.
 """
 
+from datetime import datetime, timedelta
 from typing import Any, Optional
 from dataclasses import dataclass, field
 
@@ -34,6 +35,10 @@ from dnd_manager.data import get_class_info, get_species, get_background
 @dataclass
 class CreationSession:
     """Holds the state of a character being created via AI."""
+
+    # Session metadata
+    created_at: datetime = field(default_factory=datetime.now)
+    last_accessed: datetime = field(default_factory=datetime.now)
 
     # Core choices
     ruleset: Optional[str] = None
@@ -183,14 +188,76 @@ class CreationSession:
         return len(missing) == 0, missing
 
 
+# Session management constants
+SESSION_TTL_HOURS = 24  # Sessions expire after 24 hours of inactivity
+MAX_SESSIONS = 100  # Maximum number of concurrent sessions
+
 # Global creation session (per-conversation)
 _creation_sessions: dict[str, CreationSession] = {}
 
 
+def cleanup_expired_sessions() -> int:
+    """Remove expired sessions based on TTL.
+
+    Returns:
+        Number of sessions removed
+    """
+    now = datetime.now()
+    ttl = timedelta(hours=SESSION_TTL_HOURS)
+    expired = [
+        session_id
+        for session_id, session in _creation_sessions.items()
+        if now - session.last_accessed > ttl
+    ]
+    for session_id in expired:
+        del _creation_sessions[session_id]
+    return len(expired)
+
+
+def cleanup_oldest_sessions(keep_count: int = MAX_SESSIONS) -> int:
+    """Remove oldest sessions if we exceed the maximum.
+
+    Args:
+        keep_count: Maximum number of sessions to keep
+
+    Returns:
+        Number of sessions removed
+    """
+    if len(_creation_sessions) <= keep_count:
+        return 0
+
+    # Sort by last_accessed, oldest first
+    sorted_sessions = sorted(
+        _creation_sessions.items(),
+        key=lambda x: x[1].last_accessed,
+    )
+
+    # Remove oldest sessions
+    to_remove = len(_creation_sessions) - keep_count
+    removed = 0
+    for session_id, _ in sorted_sessions[:to_remove]:
+        del _creation_sessions[session_id]
+        removed += 1
+
+    return removed
+
+
 def get_creation_session(session_id: str = "default") -> CreationSession:
-    """Get or create a creation session."""
+    """Get or create a creation session.
+
+    Also performs cleanup of expired sessions periodically.
+    """
+    # Cleanup expired sessions (lightweight check)
+    if len(_creation_sessions) > MAX_SESSIONS // 2:
+        cleanup_expired_sessions()
+        cleanup_oldest_sessions()
+
     if session_id not in _creation_sessions:
         _creation_sessions[session_id] = CreationSession()
+    else:
+        # Update last_accessed timestamp
+        _creation_sessions[session_id].last_accessed = datetime.now()
+
     return _creation_sessions[session_id]
 
 
@@ -198,6 +265,18 @@ def clear_creation_session(session_id: str = "default") -> None:
     """Clear a creation session."""
     if session_id in _creation_sessions:
         del _creation_sessions[session_id]
+
+
+def get_session_count() -> int:
+    """Get the current number of active sessions."""
+    return len(_creation_sessions)
+
+
+def clear_all_sessions() -> int:
+    """Clear all sessions. Returns count of sessions cleared."""
+    count = len(_creation_sessions)
+    _creation_sessions.clear()
+    return count
 
 
 # Tool handlers

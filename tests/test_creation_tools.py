@@ -1,5 +1,6 @@
 """Tests for AI character creation tools."""
 
+from datetime import datetime, timedelta
 import pytest
 from dnd_manager.ai.tools.handlers.creation_handlers import (
     create_character,
@@ -19,6 +20,14 @@ from dnd_manager.ai.tools.handlers.creation_handlers import (
     create_advancement_plan,
     get_creation_session,
     clear_creation_session,
+    # Session management
+    cleanup_expired_sessions,
+    cleanup_oldest_sessions,
+    get_session_count,
+    clear_all_sessions,
+    SESSION_TTL_HOURS,
+    MAX_SESSIONS,
+    _creation_sessions,
     # Extended creation tools
     set_class_levels,
     set_combat_stats,
@@ -31,6 +40,116 @@ from dnd_manager.ai.tools.handlers.creation_handlers import (
     set_currency,
     set_personality,
 )
+
+
+class TestSessionCleanup:
+    """Tests for session cleanup and memory management."""
+
+    def setup_method(self):
+        """Clear all sessions before each test."""
+        clear_all_sessions()
+
+    def test_session_has_timestamps(self):
+        """Test that sessions have created_at and last_accessed timestamps."""
+        session = get_creation_session("test_timestamps")
+        assert session.created_at is not None
+        assert session.last_accessed is not None
+        assert isinstance(session.created_at, datetime)
+        assert isinstance(session.last_accessed, datetime)
+
+    def test_last_accessed_updates_on_access(self):
+        """Test that last_accessed updates when session is retrieved."""
+        session1 = get_creation_session("test_access")
+        original_access = session1.last_accessed
+
+        # Access again - last_accessed should update
+        import time
+        time.sleep(0.01)  # Small delay to ensure time difference
+        session2 = get_creation_session("test_access")
+
+        assert session2.last_accessed >= original_access
+
+    def test_cleanup_expired_sessions(self):
+        """Test that expired sessions are cleaned up."""
+        # Create a session
+        session = get_creation_session("test_expired")
+
+        # Manually set last_accessed to be old
+        session.last_accessed = datetime.now() - timedelta(hours=SESSION_TTL_HOURS + 1)
+
+        # Run cleanup
+        removed = cleanup_expired_sessions()
+
+        assert removed == 1
+        assert get_session_count() == 0
+
+    def test_cleanup_keeps_recent_sessions(self):
+        """Test that recent sessions are not cleaned up."""
+        # Create a recent session
+        get_creation_session("test_recent")
+
+        # Run cleanup - should not remove
+        removed = cleanup_expired_sessions()
+
+        assert removed == 0
+        assert get_session_count() == 1
+
+    def test_cleanup_oldest_sessions(self):
+        """Test that oldest sessions are removed when limit exceeded."""
+        # Create many sessions
+        for i in range(10):
+            session = get_creation_session(f"test_oldest_{i}")
+            # Stagger last_accessed times
+            session.last_accessed = datetime.now() - timedelta(minutes=10 - i)
+
+        assert get_session_count() == 10
+
+        # Cleanup to keep only 5
+        removed = cleanup_oldest_sessions(keep_count=5)
+
+        assert removed == 5
+        assert get_session_count() == 5
+
+        # Verify oldest sessions were removed (0-4 should be gone)
+        # and newest kept (5-9 should remain)
+        assert "test_oldest_0" not in _creation_sessions
+        assert "test_oldest_9" in _creation_sessions
+
+    def test_get_session_count(self):
+        """Test get_session_count returns correct count."""
+        assert get_session_count() == 0
+
+        get_creation_session("test_count_1")
+        assert get_session_count() == 1
+
+        get_creation_session("test_count_2")
+        assert get_session_count() == 2
+
+    def test_clear_all_sessions(self):
+        """Test clear_all_sessions removes everything."""
+        get_creation_session("test_all_1")
+        get_creation_session("test_all_2")
+        get_creation_session("test_all_3")
+
+        count = clear_all_sessions()
+
+        assert count == 3
+        assert get_session_count() == 0
+
+    def test_auto_cleanup_on_get_when_many_sessions(self):
+        """Test that get_creation_session triggers cleanup when needed."""
+        # Create sessions just over half the limit
+        for i in range(MAX_SESSIONS // 2 + 5):
+            session = get_creation_session(f"auto_cleanup_{i}")
+            # Make some of them expired
+            if i < 3:
+                session.last_accessed = datetime.now() - timedelta(hours=SESSION_TTL_HOURS + 1)
+
+        # Access a new session - should trigger cleanup
+        get_creation_session("trigger_cleanup")
+
+        # Expired sessions should have been cleaned
+        assert "auto_cleanup_0" not in _creation_sessions
 
 
 class TestCreationSession:

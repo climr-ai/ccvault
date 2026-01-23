@@ -7,6 +7,65 @@ from enum import Enum
 from typing import Any, AsyncIterator, Optional, Union
 
 
+# =============================================================================
+# AI Error Classes - Unified error handling across providers
+# =============================================================================
+
+
+class AIError(Exception):
+    """Base exception for AI-related errors."""
+
+    def __init__(self, message: str, provider: Optional[str] = None):
+        self.provider = provider
+        super().__init__(f"[{provider}] {message}" if provider else message)
+
+
+class AIConfigurationError(AIError):
+    """Raised when an AI provider is not properly configured."""
+    pass
+
+
+class AIRateLimitError(AIError):
+    """Raised when rate limits are exceeded."""
+
+    def __init__(
+        self,
+        message: str,
+        provider: Optional[str] = None,
+        retry_after: Optional[int] = None,
+    ):
+        self.retry_after = retry_after
+        super().__init__(message, provider)
+
+
+class AIAuthenticationError(AIError):
+    """Raised when authentication fails (invalid API key)."""
+    pass
+
+
+class AIModelNotFoundError(AIError):
+    """Raised when the requested model is not available."""
+
+    def __init__(self, model: str, provider: Optional[str] = None):
+        self.model = model
+        super().__init__(f"Model '{model}' not found", provider)
+
+
+class AIContentFilterError(AIError):
+    """Raised when content is blocked by safety filters."""
+    pass
+
+
+class AIConnectionError(AIError):
+    """Raised when unable to connect to the AI service."""
+    pass
+
+
+class AITimeoutError(AIError):
+    """Raised when a request times out."""
+    pass
+
+
 def get_ai_defaults() -> tuple[int, float]:
     """Get AI generation defaults (max_tokens, temperature) from config.
 

@@ -1568,6 +1568,7 @@ def main() -> int:
 
     if args.command == "new":
         # Use config default if class not specified
+        config = get_config_manager().config
         char_class = args.char_class or config.character_defaults.class_name
         return cmd_new(args.name, char_class, args.level)
 

@@ -18,7 +18,16 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import AsyncIterator, Optional
 
-from dnd_manager.ai.base import AIMessage, AIProvider, AIResponse, MessageRole
+from dnd_manager.ai.base import (
+    AIMessage,
+    AIProvider,
+    AIRateLimitError,
+    AIResponse,
+    MessageRole,
+    ToolChoice,
+    ToolUseBlock,
+    ToolResultBlock,
+)
 
 
 class QueryComplexity(str, Enum):
@@ -324,6 +333,244 @@ class GeminiRouter(AIProvider):
             raise last_error
         raise RuntimeError("All models exhausted")
 
+    async def chat_with_tools(
+        self,
+        messages: list[AIMessage],
+        tools: list[dict],
+        model: Optional[str] = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.7,
+        tool_choice: ToolChoice = ToolChoice.AUTO,
+    ) -> AIResponse:
+        """Route chat with tools to appropriate model based on query complexity.
+
+        Args:
+            messages: Conversation history (may include tool results)
+            tools: List of tool definitions in Anthropic format (will be converted)
+            model: Model to use (overrides auto-routing if specified)
+            max_tokens: Maximum tokens in response
+            temperature: Sampling temperature
+            tool_choice: Controls tool usage (AUTO, ANY, NONE)
+
+        Returns:
+            AIResponse which may include tool_use requests
+        """
+        # If model explicitly specified, use it directly
+        if model:
+            return await self._call_model_with_tools(
+                model, messages, tools, max_tokens, temperature, tool_choice
+            )
+
+        # Get the user's query for classification
+        user_messages = [m for m in messages if m.role == MessageRole.USER]
+        query = user_messages[-1].content if user_messages else ""
+
+        # Classify complexity
+        if self._auto_classify and query:
+            complexity = await self.classify_query(query)
+        else:
+            complexity = QueryComplexity.MODERATE
+
+        # Try models in order of preference for this complexity
+        candidates = self.MODEL_TIERS[complexity].copy()
+        last_error = None
+
+        for candidate_model in candidates:
+            quota = self._state.get_quota(candidate_model)
+            if not quota.is_available():
+                continue
+
+            try:
+                response = await self._call_model_with_tools(
+                    candidate_model, messages, tools, max_tokens, temperature, tool_choice
+                )
+                return response
+            except RateLimitError as e:
+                last_error = e
+                continue
+            except Exception as e:
+                last_error = e
+                continue
+
+        # All models failed, raise the last error
+        if last_error:
+            raise last_error
+        raise RuntimeError("All models exhausted")
+
+    async def _call_model_with_tools(
+        self,
+        model: str,
+        messages: list[AIMessage],
+        tools: list[dict],
+        max_tokens: int,
+        temperature: float,
+        tool_choice: ToolChoice,
+    ) -> AIResponse:
+        """Call a specific model with tools and rate limit handling."""
+        from google.genai import types
+        import uuid
+
+        client = self._get_client()
+        quota = self._state.get_quota(model)
+
+        # Extract system prompt and build contents
+        system_instruction, contents = self._build_contents_with_tools(messages)
+
+        # Convert tools to Gemini format
+        gemini_func_decls = self._convert_tools_to_gemini(tools)
+
+        # Build config with tools
+        if tool_choice == ToolChoice.NONE or not tools:
+            config = types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                max_output_tokens=max_tokens,
+                temperature=temperature,
+            )
+        else:
+            # Set tool config based on tool_choice
+            if tool_choice == ToolChoice.ANY:
+                tool_config = types.ToolConfig(
+                    function_calling_config=types.FunctionCallingConfig(mode="ANY")
+                )
+            else:  # AUTO
+                tool_config = types.ToolConfig(
+                    function_calling_config=types.FunctionCallingConfig(mode="AUTO")
+                )
+
+            config = types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                max_output_tokens=max_tokens,
+                temperature=temperature,
+                tools=[types.Tool(function_declarations=gemini_func_decls)],
+                tool_config=tool_config,
+            )
+
+        try:
+            response = await client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
+            quota.record_request()
+
+            # Parse response for function calls and text
+            tool_use_blocks = []
+            text_content = ""
+
+            if response.candidates and response.candidates[0].content:
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, "text") and part.text:
+                        text_content += part.text
+                    elif hasattr(part, "function_call") and part.function_call:
+                        fc = part.function_call
+                        tool_use_blocks.append(ToolUseBlock(
+                            id=f"toolu_{uuid.uuid4().hex[:24]}",
+                            name=fc.name,
+                            input=dict(fc.args) if fc.args else {},
+                        ))
+
+            # Extract usage info if available
+            input_tokens = None
+            output_tokens = None
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                input_tokens = getattr(response.usage_metadata, "prompt_token_count", None)
+                output_tokens = getattr(response.usage_metadata, "candidates_token_count", None)
+
+            # Determine finish reason
+            finish_reason = None
+            if response.candidates:
+                finish_reason = response.candidates[0].finish_reason.name
+
+            return AIResponse(
+                content=text_content,
+                model=model,
+                provider=self.name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                finish_reason=finish_reason,
+                tool_use=tool_use_blocks,
+            )
+
+        except Exception as e:
+            error_str = str(e).lower()
+            if "429" in error_str or "rate" in error_str or "quota" in error_str:
+                quota.record_rate_limit()
+                raise RateLimitError(model, str(e))
+            raise
+
+    def _build_contents_with_tools(
+        self, messages: list[AIMessage]
+    ) -> tuple[Optional[str], list[dict]]:
+        """Convert messages to Gemini format, handling tool use and results.
+
+        Returns:
+            Tuple of (system_instruction, contents)
+        """
+        system_instruction = None
+        contents = []
+
+        for msg in messages:
+            if msg.role == MessageRole.SYSTEM:
+                system_instruction = msg.content
+            elif msg.role == MessageRole.USER:
+                contents.append({"role": "user", "parts": [{"text": msg.content}]})
+            elif msg.role == MessageRole.ASSISTANT:
+                if isinstance(msg.content, str):
+                    contents.append({"role": "model", "parts": [{"text": msg.content}]})
+                else:
+                    # Tool use blocks from AI - convert to function_call parts
+                    parts = []
+                    for block in msg.content:
+                        if isinstance(block, ToolUseBlock):
+                            parts.append({
+                                "function_call": {
+                                    "name": block.name,
+                                    "args": block.input,
+                                }
+                            })
+                    if parts:
+                        contents.append({"role": "model", "parts": parts})
+            elif msg.role == MessageRole.TOOL_RESULT:
+                # Tool results go as function_response parts
+                if isinstance(msg.content, list):
+                    parts = []
+                    for block in msg.content:
+                        if isinstance(block, ToolResultBlock):
+                            tool_name = self._get_tool_name_for_id(messages, block.tool_use_id)
+                            parts.append({
+                                "function_response": {
+                                    "name": tool_name,
+                                    "response": {"result": block.content},
+                                }
+                            })
+                    if parts:
+                        contents.append({"role": "user", "parts": parts})
+
+        return system_instruction, contents
+
+    def _get_tool_name_for_id(self, messages: list[AIMessage], tool_use_id: str) -> str:
+        """Find the tool name associated with a tool_use_id."""
+        for msg in messages:
+            if msg.role == MessageRole.ASSISTANT and not isinstance(msg.content, str):
+                for block in msg.content:
+                    if isinstance(block, ToolUseBlock) and block.id == tool_use_id:
+                        return block.name
+        return "unknown"
+
+    def _convert_tools_to_gemini(self, tools: list[dict]) -> list[dict]:
+        """Convert Anthropic-format tool definitions to Gemini format."""
+        gemini_tools = []
+
+        for tool in tools:
+            func_decl = {
+                "name": tool["name"],
+                "description": tool.get("description", ""),
+                "parameters": tool.get("input_schema", {"type": "object", "properties": {}}),
+            }
+            gemini_tools.append(func_decl)
+
+        return gemini_tools
+
     async def chat_stream(
         self,
         messages: list[AIMessage],
@@ -395,8 +642,12 @@ class GeminiRouter(AIProvider):
         return status
 
 
-class RateLimitError(Exception):
-    """Rate limit error with model info."""
+# Backwards-compatible alias for RateLimitError
+class RateLimitError(AIRateLimitError):
+    """Rate limit error with model info.
+
+    Deprecated: Use AIRateLimitError from dnd_manager.ai.base instead.
+    """
     def __init__(self, model: str, message: str):
         self.model = model
-        super().__init__(f"Rate limit on {model}: {message}")
+        super().__init__(message, provider="gemini-router")

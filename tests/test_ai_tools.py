@@ -89,13 +89,6 @@ class TestGeminiToolConversion:
             provider = GeminiProvider(api_key="test-key")
             return provider
 
-    def test_convert_tools_to_gemini(self, gemini_provider):
-        """Test converting Anthropic-format tools to Gemini format."""
-        # The conversion now returns FunctionDeclaration proto objects
-        # which requires the real genai library. Test passes if no exception.
-        # The real functionality is tested by the integration test script.
-        pass
-
     def test_convert_tools_to_gemini(self):
         """Test Anthropic tool format to Gemini format conversion."""
         from dnd_manager.ai.gemini import GeminiProvider
@@ -213,6 +206,139 @@ class TestGeminiToolConversion:
         assert gemini_provider._get_tool_name_for_id(messages, "toolu_123") == "deal_damage"
         assert gemini_provider._get_tool_name_for_id(messages, "toolu_456") == "heal_character"
         assert gemini_provider._get_tool_name_for_id(messages, "toolu_789") == "unknown"
+
+
+class TestGeminiRouterToolSupport:
+    """Tests for GeminiRouter tool support methods."""
+
+    @pytest.fixture
+    def gemini_router(self):
+        """Create a GeminiRouter with mocked client."""
+        with patch("dnd_manager.ai.router.GeminiRouter._get_client") as mock:
+            mock.return_value = MagicMock()
+            from dnd_manager.ai.router import GeminiRouter
+            router = GeminiRouter(api_key="test-key", auto_classify=False)
+            return router
+
+    def test_router_has_chat_with_tools(self, gemini_router):
+        """Test that GeminiRouter has chat_with_tools method."""
+        assert hasattr(gemini_router, 'chat_with_tools')
+        assert callable(getattr(gemini_router, 'chat_with_tools'))
+
+    def test_router_has_helper_methods(self, gemini_router):
+        """Test that GeminiRouter has required helper methods."""
+        assert hasattr(gemini_router, '_call_model_with_tools')
+        assert hasattr(gemini_router, '_build_contents_with_tools')
+        assert hasattr(gemini_router, '_get_tool_name_for_id')
+        assert hasattr(gemini_router, '_convert_tools_to_gemini')
+
+    def test_convert_tools_to_gemini(self, gemini_router):
+        """Test Anthropic tool format to Gemini format conversion."""
+        tools = [{
+            "name": "deal_damage",
+            "description": "Deal damage to a character",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "amount": {"type": "integer", "description": "Damage amount"},
+                },
+                "required": ["amount"],
+            },
+        }]
+
+        result = gemini_router._convert_tools_to_gemini(tools)
+
+        assert len(result) == 1
+        assert result[0]["name"] == "deal_damage"
+        assert result[0]["description"] == "Deal damage to a character"
+        assert "parameters" in result[0]
+
+    def test_build_contents_with_tools_basic(self, gemini_router):
+        """Test basic message conversion with tools."""
+        messages = [
+            AIMessage(role=MessageRole.SYSTEM, content="You are a D&D assistant."),
+            AIMessage(role=MessageRole.USER, content="Hello!"),
+            AIMessage(role=MessageRole.ASSISTANT, content="Hi there!"),
+        ]
+
+        system, contents = gemini_router._build_contents_with_tools(messages)
+
+        assert system == "You are a D&D assistant."
+        assert len(contents) == 2
+        assert contents[0]["role"] == "user"
+        assert contents[1]["role"] == "model"
+
+    def test_build_contents_with_tool_use(self, gemini_router):
+        """Test converting messages with tool use blocks."""
+        messages = [
+            AIMessage(role=MessageRole.USER, content="Deal 10 damage"),
+            AIMessage(
+                role=MessageRole.ASSISTANT,
+                content=[
+                    ToolUseBlock(
+                        id="toolu_123",
+                        name="deal_damage",
+                        input={"amount": 10},
+                    )
+                ],
+            ),
+        ]
+
+        system, contents = gemini_router._build_contents_with_tools(messages)
+
+        assert system is None
+        assert len(contents) == 2
+        assert contents[1]["role"] == "model"
+        assert "function_call" in contents[1]["parts"][0]
+        assert contents[1]["parts"][0]["function_call"]["name"] == "deal_damage"
+
+    def test_build_contents_with_tool_results(self, gemini_router):
+        """Test converting messages with tool results."""
+        messages = [
+            AIMessage(role=MessageRole.USER, content="Deal 10 damage"),
+            AIMessage(
+                role=MessageRole.ASSISTANT,
+                content=[
+                    ToolUseBlock(
+                        id="toolu_123",
+                        name="deal_damage",
+                        input={"amount": 10},
+                    )
+                ],
+            ),
+            AIMessage(
+                role=MessageRole.TOOL_RESULT,
+                content=[
+                    ToolResultBlock(
+                        tool_use_id="toolu_123",
+                        content='{"current_hp": 30}',
+                    )
+                ],
+            ),
+        ]
+
+        system, contents = gemini_router._build_contents_with_tools(messages)
+
+        assert len(contents) == 3
+        assert contents[2]["role"] == "user"
+        assert "function_response" in contents[2]["parts"][0]
+        assert contents[2]["parts"][0]["function_response"]["name"] == "deal_damage"
+
+    def test_get_tool_name_for_id(self, gemini_router):
+        """Test finding tool name by ID."""
+        messages = [
+            AIMessage(
+                role=MessageRole.ASSISTANT,
+                content=[
+                    ToolUseBlock(id="toolu_123", name="deal_damage", input={}),
+                    ToolUseBlock(id="toolu_456", name="heal_character", input={}),
+                ],
+            ),
+        ]
+
+        assert gemini_router._get_tool_name_for_id(messages, "toolu_123") == "deal_damage"
+        assert gemini_router._get_tool_name_for_id(messages, "toolu_456") == "heal_character"
+        assert gemini_router._get_tool_name_for_id(messages, "toolu_789") == "unknown"
 
 
 class TestAnthropicToolConversion:
