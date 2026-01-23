@@ -2623,7 +2623,7 @@ class WelcomeScreen(Screen):
 
     def action_open_character(self) -> None:
         """Open an existing character."""
-        self.app.action_open_character()
+        self.app.action_open_character(return_to_dashboard=True)
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -2691,12 +2691,13 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
         Binding("n", "new_character", "New Character"),
     ]
 
-    def __init__(self, characters: list[dict], **kwargs) -> None:
+    def __init__(self, characters: list[dict], return_to_dashboard: bool = False, **kwargs) -> None:
         super().__init__(**kwargs)
         self.characters = characters
         self.selected_index = 0
         self._last_letter = ""
         self._last_letter_index = -1
+        self._return_to_dashboard = return_to_dashboard
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -2746,6 +2747,9 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
     def action_cancel(self) -> None:
         """Return to welcome screen."""
         self.app.pop_screen()
+        if self._return_to_dashboard and self.app.current_character:
+            if not isinstance(self.app.screen, MainDashboard):
+                self.app.push_screen(MainDashboard(self.app.current_character))
 
     def action_new_character(self) -> None:
         """Create new character instead."""
@@ -8973,14 +8977,14 @@ class DNDManagerApp(App):
         """Open character creation wizard."""
         self.push_screen(CharacterCreationScreen())
 
-    def action_open_character(self) -> None:
+    def action_open_character(self, return_to_dashboard: bool = False) -> None:
         """Open character selection screen."""
         char_info = self.store.get_character_info()
         if not char_info:
             self.notify("No characters found. Create one first!", severity="warning")
             return
 
-        self.push_screen(CharacterSelectScreen(char_info))
+        self.push_screen(CharacterSelectScreen(char_info, return_to_dashboard=return_to_dashboard))
 
     def load_character(self, path: Path) -> None:
         """Load a character from a path and switch to dashboard."""
