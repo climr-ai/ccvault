@@ -1,10 +1,12 @@
 """CLIMR Homebrew Library - Community homebrew content sharing.
 
-This module provides:
+This module provides LOCAL homebrew library functionality:
 - Local homebrew library storage with SQLite
 - Rating and voting system
-- Content publishing and discovery
-- Prepared for future cloud sync with CLIMR servers
+- Content publishing and discovery (local only)
+
+NOTE: Cloud sync with CLIMR servers is PLANNED but not yet implemented.
+All content is stored and shared locally only at this time.
 """
 
 import sqlite3

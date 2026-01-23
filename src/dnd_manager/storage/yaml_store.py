@@ -68,12 +68,52 @@ class YAMLStore(Generic[T]):
         safe_name = self._sanitize_filename(name)
         return self.directory / f"{safe_name}{self.extension}"
 
+    # Maximum filename length (most filesystems support 255, but we're conservative)
+    MAX_FILENAME_LENGTH = 200
+
     @staticmethod
     def _sanitize_filename(name: str) -> str:
-        """Sanitize a string to be a valid filename."""
-        # Replace spaces with underscores, remove unsafe characters
-        safe = name.lower().replace(" ", "_")
+        """Sanitize a string to be a valid, safe filename.
+
+        Security measures:
+        - Removes path separators to prevent directory traversal
+        - Only allows alphanumeric characters, underscores, and hyphens
+        - Enforces maximum length to prevent filesystem issues
+        - Returns 'unnamed' for empty/invalid input
+
+        Args:
+            name: Raw name string to sanitize
+
+        Returns:
+            Safe filename string (without extension)
+        """
+        if not name or not isinstance(name, str):
+            return "unnamed"
+
+        # Normalize and lowercase
+        safe = name.strip().lower()
+
+        # Remove any path components (prevent directory traversal)
+        # This handles /, \, and any other path separators
+        safe = safe.replace("/", "_").replace("\\", "_")
+
+        # Replace spaces with underscores
+        safe = safe.replace(" ", "_")
+
+        # Only keep alphanumeric, underscores, and hyphens
         safe = "".join(c for c in safe if c.isalnum() or c in "_-")
+
+        # Remove leading/trailing underscores and hyphens
+        safe = safe.strip("_-")
+
+        # Collapse multiple underscores
+        while "__" in safe:
+            safe = safe.replace("__", "_")
+
+        # Enforce maximum length
+        if len(safe) > YAMLStore.MAX_FILENAME_LENGTH:
+            safe = safe[:YAMLStore.MAX_FILENAME_LENGTH].rstrip("_-")
+
         return safe or "unnamed"
 
     def save(self, name: str, data: T, create_backup: bool = True) -> Path:

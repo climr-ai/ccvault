@@ -4,13 +4,19 @@ Handles user settings, API keys, and preferences stored in a YAML config file.
 Config location: ~/.config/dnd-manager/config.yaml (or OS-appropriate equivalent)
 """
 
+import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from pydantic import BaseModel, Field
 from platformdirs import user_config_dir, user_data_dir
 import yaml
+
+logger = logging.getLogger(__name__)
+
+# Current config schema version - increment when making breaking changes
+CONFIG_SCHEMA_VERSION = 2
 
 
 # Settings that contain sensitive data (shown masked in list)
@@ -203,8 +209,83 @@ class EnforcementConfig(BaseModel):
     )
 
 
+# =============================================================================
+# Config Migrations
+# =============================================================================
+
+
+def migrate_v1_to_v2(data: dict) -> dict:
+    """Migrate config from version 1 to version 2.
+
+    Changes in v2:
+    - Added config_version field
+    - Restructured AI config with provider-specific settings
+    - Added enforcement config section
+    """
+    # Ensure AI config structure exists
+    if "ai" not in data:
+        data["ai"] = {}
+
+    ai = data["ai"]
+
+    # Migrate old flat API key structure to nested provider config
+    # Old: ai.gemini_api_key -> New: ai.gemini.api_key
+    for provider in ["gemini", "anthropic", "openai"]:
+        old_key = f"{provider}_api_key"
+        if old_key in ai:
+            if provider not in ai:
+                ai[provider] = {}
+            ai[provider]["api_key"] = ai.pop(old_key)
+
+    # Migrate old model setting
+    if "default_model" in ai and "gemini" in ai:
+        if "preferred_model" not in ai["gemini"]:
+            ai["gemini"]["preferred_model"] = ai.get("default_model")
+
+    # Ensure enforcement section exists (new in v2)
+    if "enforcement" not in data:
+        data["enforcement"] = {}
+
+    data["config_version"] = 2
+    return data
+
+
+# Migration registry: version -> migration function
+MIGRATIONS: dict[int, Callable[[dict], dict]] = {
+    1: migrate_v1_to_v2,
+}
+
+
+def migrate_config(data: dict) -> dict:
+    """Run all necessary migrations on config data.
+
+    Args:
+        data: Raw config data from YAML
+
+    Returns:
+        Migrated config data
+    """
+    current_version = data.get("config_version", 1)
+
+    if current_version >= CONFIG_SCHEMA_VERSION:
+        return data
+
+    logger.info(f"Migrating config from v{current_version} to v{CONFIG_SCHEMA_VERSION}")
+
+    # Run migrations in order
+    for version in range(current_version, CONFIG_SCHEMA_VERSION):
+        if version in MIGRATIONS:
+            logger.debug(f"Running migration v{version} -> v{version + 1}")
+            data = MIGRATIONS[version](data)
+
+    return data
+
+
 class Config(BaseModel):
     """Application configuration."""
+
+    # Schema version for migrations
+    config_version: int = Field(default=CONFIG_SCHEMA_VERSION)
 
     # Core settings
     character_defaults: CharacterDefaults = Field(default_factory=CharacterDefaults)
@@ -242,13 +323,35 @@ class Config(BaseModel):
 
     @classmethod
     def load(cls) -> "Config":
-        """Load configuration from file or create default."""
+        """Load configuration from file or create default.
+
+        Automatically runs migrations if the config version is outdated.
+        """
         config_path = cls.get_config_path()
 
         if config_path.exists():
             with open(config_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
-            return cls.model_validate(data)
+
+            # Run migrations if needed
+            data = migrate_config(data)
+
+            try:
+                config = cls.model_validate(data)
+            except Exception as e:
+                # If validation fails, log the error and create backup
+                logger.warning(f"Config validation failed: {e}. Creating backup and using defaults.")
+                backup_path = config_path.with_suffix(".yaml.backup")
+                import shutil
+                shutil.copy2(config_path, backup_path)
+                logger.info(f"Old config backed up to: {backup_path}")
+                config = cls()
+
+            # Save if migrations were applied
+            if data.get("config_version", 1) != CONFIG_SCHEMA_VERSION:
+                config.save()
+
+            return config
 
         # Create default config
         config = cls()

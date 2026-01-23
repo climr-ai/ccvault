@@ -11,6 +11,9 @@ from dnd_manager.config import (
     ConfigManager,
     _mask_key,
     SENSITIVE_KEYS,
+    CONFIG_SCHEMA_VERSION,
+    migrate_config,
+    migrate_v1_to_v2,
 )
 
 
@@ -172,3 +175,125 @@ class TestMaskKey:
         assert "ai.gemini.api_key" in SENSITIVE_KEYS
         assert "ai.anthropic.api_key" in SENSITIVE_KEYS
         assert "ai.openai.api_key" in SENSITIVE_KEYS
+
+
+class TestConfigMigration:
+    """Tests for config migration functionality."""
+
+    def test_migrate_v1_to_v2_basic(self):
+        """Test basic v1 to v2 migration."""
+        v1_data = {
+            "ai": {
+                "default_provider": "gemini",
+            },
+            "character_defaults": {
+                "ruleset": "dnd2024",
+            },
+        }
+
+        result = migrate_v1_to_v2(v1_data)
+
+        assert result["config_version"] == 2
+        assert "enforcement" in result
+        assert "ai" in result
+
+    def test_migrate_v1_to_v2_with_old_api_keys(self):
+        """Test migration of old flat API key structure."""
+        v1_data = {
+            "ai": {
+                "gemini_api_key": "old-gemini-key",
+                "anthropic_api_key": "old-anthropic-key",
+                "default_provider": "gemini",
+            },
+        }
+
+        result = migrate_v1_to_v2(v1_data)
+
+        assert result["config_version"] == 2
+        assert result["ai"]["gemini"]["api_key"] == "old-gemini-key"
+        assert result["ai"]["anthropic"]["api_key"] == "old-anthropic-key"
+        # Old keys should be removed
+        assert "gemini_api_key" not in result["ai"]
+        assert "anthropic_api_key" not in result["ai"]
+
+    def test_migrate_config_no_version(self):
+        """Test migrating config without version (assumes v1)."""
+        old_data = {
+            "ai": {
+                "default_provider": "gemini",
+            },
+        }
+
+        result = migrate_config(old_data)
+
+        assert result["config_version"] == CONFIG_SCHEMA_VERSION
+
+    def test_migrate_config_current_version(self):
+        """Test that current version config is not modified."""
+        current_data = {
+            "config_version": CONFIG_SCHEMA_VERSION,
+            "ai": {
+                "default_provider": "gemini",
+                "gemini": {"api_key": "test-key"},
+            },
+        }
+
+        result = migrate_config(current_data.copy())
+
+        assert result == current_data
+
+    def test_migrate_config_preserves_data(self):
+        """Test that migration preserves existing valid data."""
+        v1_data = {
+            "ai": {
+                "default_provider": "anthropic",
+                "gemini": {
+                    "api_key": "existing-key",
+                    "auto_classify": False,
+                },
+            },
+            "character_defaults": {
+                "name": "Custom Name",
+                "ruleset": "dnd2014",
+            },
+        }
+
+        result = migrate_config(v1_data)
+
+        assert result["config_version"] == CONFIG_SCHEMA_VERSION
+        assert result["ai"]["default_provider"] == "anthropic"
+        assert result["ai"]["gemini"]["api_key"] == "existing-key"
+        assert result["ai"]["gemini"]["auto_classify"] is False
+        assert result["character_defaults"]["name"] == "Custom Name"
+        assert result["character_defaults"]["ruleset"] == "dnd2014"
+
+    def test_config_has_version_field(self):
+        """Test that new Config objects have config_version."""
+        config = Config()
+        assert hasattr(config, "config_version")
+        assert config.config_version == CONFIG_SCHEMA_VERSION
+
+    def test_config_load_migrates_old_config(self, tmp_path, monkeypatch):
+        """Test that loading old config triggers migration."""
+        # Create a v1 config file
+        config_file = tmp_path / "config.yaml"
+        v1_data = {
+            "ai": {
+                "default_provider": "gemini",
+            },
+            "character_defaults": {
+                "ruleset": "dnd2024",
+            },
+        }
+
+        with open(config_file, "w") as f:
+            yaml.dump(v1_data, f)
+
+        # Mock the config path
+        monkeypatch.setattr(Config, "get_config_path", lambda: config_file)
+
+        # Load should migrate
+        config = Config.load()
+
+        assert config.config_version == CONFIG_SCHEMA_VERSION
+        assert config.ai.default_provider == "gemini"

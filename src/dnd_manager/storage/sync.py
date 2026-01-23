@@ -1,7 +1,13 @@
 """Backend sync interface for future cloud synchronization.
 
+WARNING: This module is a STUB implementation. Cloud sync is NOT yet available.
+All operations run in offline mode and characters are stored locally only.
+
 This module provides a stub interface for syncing characters with a backend service.
 The actual implementation will be added when the backend is available.
+
+Status: PLANNED FEATURE - Not yet implemented
+See: https://github.com/jaredgiosinuff/dnd-manager/issues (for feature requests)
 """
 
 from abc import ABC, abstractmethod
