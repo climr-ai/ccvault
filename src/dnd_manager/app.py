@@ -2896,6 +2896,10 @@ class DashboardPanel(VerticalScroll):
 
     can_focus = True
 
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+
     def on_click(self) -> None:
         self.focus()
 
@@ -2903,9 +2907,8 @@ class DashboardPanel(VerticalScroll):
 class AbilityBlock(DashboardPanel):
     """Widget displaying ability scores with color-coded modifiers."""
 
-    def __init__(self, character: Character, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.character = character
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
 
     def _get_modifier_class(self, modifier: int) -> str:
         """Get CSS class based on modifier value."""
@@ -2935,9 +2938,8 @@ class AbilityBlock(DashboardPanel):
 class CharacterInfo(DashboardPanel):
     """Widget displaying character identity info."""
 
-    def __init__(self, character: Character, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.character = character
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
 
     def compose(self) -> ComposeResult:
         c = self.character
@@ -2976,9 +2978,8 @@ class CharacterInfo(DashboardPanel):
 class CombatStats(DashboardPanel):
     """Widget displaying combat statistics."""
 
-    def __init__(self, character: Character, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.character = character
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
 
     def compose(self) -> ComposeResult:
         c = self.character
@@ -3022,9 +3023,8 @@ class QuickActions(DashboardPanel):
 class SkillList(DashboardPanel):
     """Widget displaying skills."""
 
-    def __init__(self, character: Character, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.character = character
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
 
     def compose(self) -> ComposeResult:
         from dnd_manager.models.abilities import Skill, SkillProficiency, SKILL_ABILITY_MAP
@@ -3053,9 +3053,8 @@ class SkillList(DashboardPanel):
 class SpellSlots(DashboardPanel):
     """Widget displaying spell slots."""
 
-    def __init__(self, character: Character, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.character = character
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
 
     def compose(self) -> ComposeResult:
         yield Static("SPELL SLOTS", classes="panel-title")
@@ -3076,9 +3075,8 @@ class SpellSlots(DashboardPanel):
 class PreparedSpells(DashboardPanel):
     """Widget displaying prepared spells."""
 
-    def __init__(self, character: Character, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.character = character
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
 
     def compose(self) -> ComposeResult:
         yield Static("PREPARED SPELLS", classes="panel-title")
@@ -3096,9 +3094,8 @@ class PreparedSpells(DashboardPanel):
 class KnownSpells(DashboardPanel):
     """Widget displaying known spells."""
 
-    def __init__(self, character: Character, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.character = character
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
 
     def compose(self) -> ComposeResult:
         yield Static("KNOWN SPELLS", classes="panel-title")
@@ -3113,9 +3110,8 @@ class KnownSpells(DashboardPanel):
 class WeaponsPane(DashboardPanel):
     """Widget displaying weapons and equipped items."""
 
-    def __init__(self, character: Character, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.character = character
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
 
     def compose(self) -> ComposeResult:
         from dnd_manager.data import get_weapon_by_name
@@ -3139,9 +3135,8 @@ class WeaponsPane(DashboardPanel):
 class FeatsPane(DashboardPanel):
     """Widget displaying feats."""
 
-    def __init__(self, character: Character, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.character = character
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
 
     def compose(self) -> ComposeResult:
         yield Static("FEATS", classes="panel-title")
@@ -3156,9 +3151,8 @@ class FeatsPane(DashboardPanel):
 class InventoryPane(DashboardPanel):
     """Widget displaying inventory summary."""
 
-    def __init__(self, character: Character, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.character = character
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
 
     def compose(self) -> ComposeResult:
         yield Static("INVENTORY", classes="panel-title")
@@ -3176,9 +3170,8 @@ class InventoryPane(DashboardPanel):
 class ActionsPane(DashboardPanel):
     """Widget displaying actionable features."""
 
-    def __init__(self, character: Character, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.character = character
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
 
     def compose(self) -> ComposeResult:
         yield Static("ACTIONS & FEATURES", classes="panel-title")
@@ -8607,7 +8600,7 @@ class MainDashboard(ScreenContextMixin, Screen):
                 if not pane_def:
                     continue
                 _, pane_cls, pane_classes = pane_def
-                widgets.append(pane_cls(self.character, classes=pane_classes))
+                widgets.append(pane_cls(character=self.character, classes=pane_classes))
             row_class = "top-row" if idx == 0 else "bottom-row"
             if layout_name == "wide":
                 row_class = "wide-row"
