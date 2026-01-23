@@ -218,12 +218,25 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         # Letter jump tracking
         self._last_letter: str = ""
         self._last_letter_index: int = -1
+        self._last_key: str = ""
         # Dynamic steps - subspecies, species_feat, and origin_feat may be skipped
         self.all_steps = ["ruleset", "name", "class", "species", "subspecies", "species_feat", "background", "origin_feat", "abilities", "skills", "spells", "confirm"]
 
         # Get defaults from config
         config = get_config_manager().config
         defaults = config.character_defaults
+
+        # Ability step state (initialize before draft restore)
+        self.ability_sub_step = "method_select"  # method_select | generate | assign | bonuses
+        self.ability_method = "standard_array"   # standard_array | point_buy | roll
+        self.base_scores = list(STANDARD_ARRAY)  # Generated/configured scores
+        self.roll_results: list[dict] = []       # For roll method: [{rolls, total}, ...]
+        self.point_buy_scores = {a: 8 for a in ABILITIES}  # For point buy
+        self.score_assignments: dict[str, int | None] = {a: None for a in ABILITIES}  # ability -> score index
+        self.bonus_plus_2: str | None = None     # For 2024: ability name for +2
+        self.bonus_plus_1: str | None = None     # For 2024: ability name for +1
+        self.bonus_mode: str = "split"           # For 2024: "split" (+2/+1) or "spread" (+1/+1/+1)
+        self.ability_selected_index = 0          # Current selection in ability lists
 
         # Load from draft or use config defaults
         if draft_data:
@@ -276,18 +289,6 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         self.selected_option = 0
         self._draft_store = None
         self._expected_highlight = 0  # Track expected highlight to ignore spurious events
-
-        # Ability step state
-        self.ability_sub_step = "method_select"  # method_select | generate | assign | bonuses
-        self.ability_method = "standard_array"   # standard_array | point_buy | roll
-        self.base_scores = list(STANDARD_ARRAY)  # Generated/configured scores
-        self.roll_results: list[dict] = []       # For roll method: [{rolls, total}, ...]
-        self.point_buy_scores = {a: 8 for a in ABILITIES}  # For point buy
-        self.score_assignments: dict[str, int | None] = {a: None for a in ABILITIES}  # ability -> score index
-        self.bonus_plus_2: str | None = None     # For 2024: ability name for +2
-        self.bonus_plus_1: str | None = None     # For 2024: ability name for +1
-        self.bonus_mode: str = "split"           # For 2024: "split" (+2/+1) or "spread" (+1/+1/+1)
-        self.ability_selected_index = 0          # Current selection in ability lists
 
         # Skill selection state
         self.selected_skills: list[str] = []     # Skills chosen by user
@@ -2208,6 +2209,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
     def on_key(self, event) -> None:
         """Handle key presses for navigation and special actions."""
         step_name = self.steps[self.step] if self.step < len(self.steps) else ""
+        self._last_key = event.key
 
         # Handle ability step special keys
         if step_name == "abilities":
@@ -2439,6 +2441,11 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle option selection (Enter key or click)."""
         if event.option_list.id == "options-list":
+            step_name = self.steps[self.step] if self.step < len(self.steps) else ""
+            if step_name == "skills" and self._last_key == "space":
+                self._toggle_skill()
+                event.stop()
+                return
             self.selected_option = event.option_index
             self.action_next()  # Proceed to next step
 
@@ -8355,6 +8362,7 @@ class MainDashboard(ScreenContextMixin, Screen):
         Binding("ctrl+s", "save", "Save"),
         Binding("ctrl+n", "new_character", "New"),
         Binding("ctrl+o", "open_character", "Open"),
+        Binding("ctrl+r", "resume_draft", "Resume Draft"),
     ]
 
     def __init__(self, character: Character, **kwargs) -> None:
@@ -8391,6 +8399,7 @@ class MainDashboard(ScreenContextMixin, Screen):
 
         yield Header()
         yield Container(
+            Static("", id="dashboard-draft-notice", classes="draft-notice"),
             # Top row: Abilities, Character Info, Combat, Quick Actions
             Horizontal(
                 AbilityBlock(c, classes="panel ability-panel"),
@@ -8413,6 +8422,25 @@ class MainDashboard(ScreenContextMixin, Screen):
         )
         yield Footer()
 
+    def on_mount(self) -> None:
+        """Update draft notice on mount."""
+        self._update_draft_notice()
+
+    def _update_draft_notice(self) -> None:
+        """Show draft notice if a character creation draft exists."""
+        from dnd_manager.storage.yaml_store import get_default_draft_store
+
+        notice = self.query_one("#dashboard-draft-notice", Static)
+        draft_info = get_default_draft_store().get_draft_info()
+        if draft_info:
+            notice.update(
+                f"Draft in progress: {draft_info['name']} "
+                f"({draft_info['class']} {draft_info['species']}) - Press Ctrl+R to resume"
+            )
+            notice.display = True
+        else:
+            notice.display = False
+
     def action_save(self) -> None:
         """Save the current character."""
         self.app.save_character()
@@ -8429,6 +8457,17 @@ class MainDashboard(ScreenContextMixin, Screen):
     def action_back(self) -> None:
         """Return to the previous screen."""
         self.app.action_open_character(return_to_dashboard=True)
+
+    def action_resume_draft(self) -> None:
+        """Resume character creation draft."""
+        from dnd_manager.storage.yaml_store import get_default_draft_store
+
+        draft_data = get_default_draft_store().load_draft()
+        if draft_data:
+            self.app.push_screen(CharacterCreationScreen(draft_data=draft_data))
+            self.notify(f"Resuming: {draft_data.get('name', 'Unknown')}")
+        else:
+            self.notify("No draft found", severity="warning")
 
     def action_spells(self) -> None:
         """Open spells screen."""
