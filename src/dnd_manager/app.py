@@ -8246,7 +8246,8 @@ class MainDashboard(ScreenContextMixin, Screen):
     """Main character dashboard screen."""
 
     BINDINGS = [
-        Binding("q", "quit", "Quit"),
+        Binding("escape", "open_character", "Characters"),
+        Binding("q", "open_character", "Characters"),
         Binding("?", "help", "Help"),
         Binding("s", "spells", "Spells"),
         Binding("i", "inventory", "Inventory"),
@@ -8320,10 +8321,6 @@ class MainDashboard(ScreenContextMixin, Screen):
             id="dashboard",
         )
         yield Footer()
-
-    def action_quit(self) -> None:
-        """Quit the application."""
-        self.app.exit()
 
     def action_save(self) -> None:
         """Save the current character."""
