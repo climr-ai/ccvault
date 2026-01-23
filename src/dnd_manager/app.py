@@ -8427,10 +8427,7 @@ class MainDashboard(ScreenContextMixin, Screen):
 
     def action_back(self) -> None:
         """Return to the previous screen."""
-        if len(self.app.screen_stack) <= 1:
-            self.app.push_screen(WelcomeScreen())
-        else:
-            self.app.pop_screen()
+        self.app.action_open_character(return_to_dashboard=True)
 
     def action_spells(self) -> None:
         """Open spells screen."""
