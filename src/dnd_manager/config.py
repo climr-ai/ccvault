@@ -142,6 +142,8 @@ class UIConfig(BaseModel):
     min_terminal_height: int = Field(default=40)
     notes_editor: Optional[str] = Field(default=None, description="Override $EDITOR for notes")
     fallback_editor: str = Field(default="nano", description="Editor when $EDITOR/$VISUAL not set")
+    dashboard_layout: str = Field(default="balanced", description="Default dashboard layout preset")
+    dashboard_panels: Optional[list[str]] = Field(default=None, description="Custom dashboard panels (overrides preset)")
 
 
 class EnforcementConfig(BaseModel):

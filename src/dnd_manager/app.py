@@ -85,6 +85,34 @@ class ClickableListItem(Static):
         self.post_message(self.Selected(self.item_index))
 
 
+class CreationOptionList(OptionList):
+    """OptionList with custom key handling for character creation."""
+
+    def on_key(self, event) -> None:
+        screen = self.app.screen
+        if isinstance(screen, CharacterCreationScreen):
+            step_name = screen.steps[screen.step] if screen.step < len(screen.steps) else ""
+            if step_name == "skills":
+                if event.key == "space":
+                    screen._toggle_skill()
+                    event.prevent_default()
+                    return
+                if event.key.lower() == "c":
+                    screen._clear_skills()
+                    event.prevent_default()
+                    return
+            if step_name == "spells":
+                if event.key == "space":
+                    screen._toggle_spell()
+                    event.prevent_default()
+                    return
+                if event.key.lower() == "c":
+                    screen._clear_spells()
+                    event.prevent_default()
+                    return
+        super().on_key(event)
+
+
 class ListNavigationMixin:
     """Mixin providing standard list navigation: letter jump and scroll-into-view.
 
@@ -395,7 +423,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                 Vertical(
                     Static(id="step-title", classes="panel-title"),
                     Input(placeholder="Enter name...", id="name-input"),
-                    OptionList(id="options-list", classes="options-list"),
+                    CreationOptionList(id="options-list", classes="options-list"),
                     Static(id="step-description"),
                     classes="panel creation-panel creation-left",
                 ),
@@ -1711,17 +1739,19 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             for i, spell in enumerate(cantrips):
                 is_selected = spell.name in self.selected_cantrips
                 prefix = r"\[X]" if is_selected else r"\[ ]"
-                marker = "▸ " if i == self.spell_selected_index else "  "
-                options_list.mount(Static(f"{marker}{prefix} {spell.name}"))
+                options_list.add_option(Option(f"{prefix} {spell.name}", id=f"cantrip_{i}"))
 
-            options_list.mount(Static(""))
-            options_list.mount(Static(f"  Selected: {len(self.selected_cantrips)}/{cantrips_known}"))
-            options_list.mount(Static(""))
-            options_list.mount(Static(r"  ↑↓ navigate, Space to toggle, Enter to continue, \[C] clear all"))
-            if len(self.selected_cantrips) >= cantrips_known:
-                options_list.mount(Static("  Press Next to continue to spells"))
+            if cantrips:
+                self.selected_option = min(self.spell_selected_index, len(cantrips) - 1)
+                self._expected_highlight = self.spell_selected_index
+                options_list.highlighted = self.spell_selected_index
 
             self.current_options = cantrip_names
+            selected = len(self.selected_cantrips)
+            hint = "↑↓ navigate, Space to toggle, Enter to continue, C clear all."
+            if selected >= cantrips_known:
+                hint = f"{hint}\nPress Next to continue to spells."
+            description.update(f"Selected: {selected}/{cantrips_known}\n{hint}")
 
         else:  # spell_selection_phase == "spells"
             title.update(f"1ST LEVEL SPELLS - Choose {spells_known}")
@@ -1730,20 +1760,21 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             for i, spell in enumerate(level1_spells):
                 is_selected = spell.name in self.selected_spells
                 prefix = r"\[X]" if is_selected else r"\[ ]"
-                marker = "▸ " if i == self.spell_selected_index else "  "
-                options_list.mount(Static(f"{marker}{prefix} {spell.name}"))
+                options_list.add_option(Option(f"{prefix} {spell.name}", id=f"spell_{i}"))
 
-            options_list.mount(Static(""))
-            options_list.mount(Static(f"  Selected: {len(self.selected_spells)}/{spells_known}"))
-            options_list.mount(Static(""))
-            options_list.mount(Static(r"  ↑↓ navigate, Space to toggle, Enter to continue, \[C] clear all"))
-            if len(self.selected_spells) >= spells_known:
-                options_list.mount(Static("  Press Next to continue"))
+            if level1_spells:
+                self.selected_option = min(self.spell_selected_index, len(level1_spells) - 1)
+                self._expected_highlight = self.spell_selected_index
+                options_list.highlighted = self.spell_selected_index
 
             self.current_options = spell_names
+            selected = len(self.selected_spells)
+            hint = "↑↓ navigate, Space to toggle, Enter to continue, C clear all."
+            if selected >= spells_known:
+                hint = f"{hint}\nPress Next to continue."
+            description.update(f"Selected: {selected}/{spells_known}\n{hint}")
 
         options_list.display = True
-        description.update("")
 
     def _get_cantrips_known(self, class_name: str) -> int:
         """Get number of cantrips known at level 1."""
@@ -2347,25 +2378,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         if not class_info or not class_info.spellcasting_ability:
             return False
 
-        from dnd_manager.data import get_spells_by_class
-        available_spells = get_spells_by_class(class_name)
-
-        if self.spell_selection_phase == "cantrips":
-            options = [s for s in available_spells if s.level == 0]
-        else:
-            options = [s for s in available_spells if s.level == 1]
-
-        if key == "up":
-            if self.spell_selected_index > 0:
-                self.spell_selected_index -= 1
-                self._show_spells()
-            return True
-        elif key == "down":
-            if self.spell_selected_index < len(options) - 1:
-                self.spell_selected_index += 1
-                self._show_spells()
-            return True
-        elif key == "space":
+        if key == "space":
             self._toggle_spell()
             return True
         elif key.lower() == "c":
@@ -2422,6 +2435,8 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             step_name = self.steps[self.step] if self.step < len(self.steps) else ""
             if step_name == "skills":
                 self.skill_selected_index = new_index
+            elif step_name == "spells":
+                self.spell_selected_index = new_index
             self._refresh_details()
 
             # Scroll to center the highlighted item
@@ -2876,7 +2891,16 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
             self._update_selection()
 
 
-class AbilityBlock(Static):
+class DashboardPanel(VerticalScroll):
+    """Focusable, scrollable dashboard panel."""
+
+    can_focus = True
+
+    def on_click(self) -> None:
+        self.focus()
+
+
+class AbilityBlock(DashboardPanel):
     """Widget displaying ability scores with color-coded modifiers."""
 
     def __init__(self, character: Character, **kwargs) -> None:
@@ -2908,7 +2932,7 @@ class AbilityBlock(Static):
             )
 
 
-class CharacterInfo(Static):
+class CharacterInfo(DashboardPanel):
     """Widget displaying character identity info."""
 
     def __init__(self, character: Character, **kwargs) -> None:
@@ -2949,7 +2973,7 @@ class CharacterInfo(Static):
             yield Static(f"Ruleset: {ruleset.name}", classes="ruleset-info")
 
 
-class CombatStats(Static):
+class CombatStats(DashboardPanel):
     """Widget displaying combat statistics."""
 
     def __init__(self, character: Character, **kwargs) -> None:
@@ -2981,7 +3005,7 @@ class CombatStats(Static):
             yield Static(f"Spell DC: {dc}  Atk: +{atk}")
 
 
-class QuickActions(Static):
+class QuickActions(DashboardPanel):
     """Widget with quick action buttons."""
 
     def compose(self) -> ComposeResult:
@@ -2995,7 +3019,7 @@ class QuickActions(Static):
         yield Static("\\[L]evel Up")
 
 
-class SkillList(Static):
+class SkillList(DashboardPanel):
     """Widget displaying skills."""
 
     def __init__(self, character: Character, **kwargs) -> None:
@@ -3026,7 +3050,7 @@ class SkillList(Static):
             )
 
 
-class SpellSlots(Static):
+class SpellSlots(DashboardPanel):
     """Widget displaying spell slots."""
 
     def __init__(self, character: Character, **kwargs) -> None:
@@ -3049,7 +3073,7 @@ class SpellSlots(Static):
                 yield Static(f"{level}{suffix}: {filled} ({slot.remaining}/{slot.total})")
 
 
-class PreparedSpells(Static):
+class PreparedSpells(DashboardPanel):
     """Widget displaying prepared spells."""
 
     def __init__(self, character: Character, **kwargs) -> None:
@@ -3067,6 +3091,107 @@ class PreparedSpells(Static):
 
         for spell in prepared:
             yield Static(f"• {spell}")
+
+
+class KnownSpells(DashboardPanel):
+    """Widget displaying known spells."""
+
+    def __init__(self, character: Character, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+
+    def compose(self) -> ComposeResult:
+        yield Static("KNOWN SPELLS", classes="panel-title")
+        known = self.character.spellcasting.known
+        if not known:
+            yield Static("No known spells", classes="empty-state")
+            return
+        for spell in known:
+            yield Static(f"• {spell}")
+
+
+class WeaponsPane(DashboardPanel):
+    """Widget displaying weapons and equipped items."""
+
+    def __init__(self, character: Character, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+
+    def compose(self) -> ComposeResult:
+        from dnd_manager.data import get_weapon_by_name
+
+        yield Static("WEAPONS", classes="panel-title")
+        items = self.character.equipment.items
+        weapons = []
+        for item in items:
+            if get_weapon_by_name(item.name):
+                weapons.append(item)
+        if not weapons:
+            yield Static("No weapons in inventory", classes="empty-state")
+            return
+        for item in weapons:
+            equipped = True if item.equipped else False
+            marker = "★" if equipped else " "
+            qty = f"x{item.quantity}" if item.quantity > 1 else ""
+            yield Static(f"{marker} {item.name} {qty}".strip())
+
+
+class FeatsPane(DashboardPanel):
+    """Widget displaying feats."""
+
+    def __init__(self, character: Character, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+
+    def compose(self) -> ComposeResult:
+        yield Static("FEATS", classes="panel-title")
+        feats = [f for f in self.character.features if f.source == "feat"]
+        if not feats:
+            yield Static("No feats", classes="empty-state")
+            return
+        for feat in feats:
+            yield Static(f"• {feat.name}")
+
+
+class InventoryPane(DashboardPanel):
+    """Widget displaying inventory summary."""
+
+    def __init__(self, character: Character, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+
+    def compose(self) -> ComposeResult:
+        yield Static("INVENTORY", classes="panel-title")
+        items = self.character.equipment.items
+        if not items:
+            yield Static("No items", classes="empty-state")
+        for item in items:
+            qty = f"x{item.quantity}" if item.quantity > 1 else ""
+            yield Static(f"• {item.name} {qty}".strip())
+        currency = self.character.equipment.currency
+        yield Static("")
+        yield Static(f"Gold: {currency.gp}  Silver: {currency.sp}  Copper: {currency.cp}")
+
+
+class ActionsPane(DashboardPanel):
+    """Widget displaying actionable features."""
+
+    def __init__(self, character: Character, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+
+    def compose(self) -> ComposeResult:
+        yield Static("ACTIONS & FEATURES", classes="panel-title")
+        actions = [f for f in self.character.features if f.uses or f.recharge]
+        if not actions:
+            yield Static("No tracked actions", classes="empty-state")
+            return
+        for feat in actions:
+            uses = ""
+            if feat.uses:
+                remaining = max(0, feat.uses - feat.used)
+                uses = f" [{remaining}/{feat.uses}]"
+            yield Static(f"• {feat.name}{uses}")
 
 
 class DiceRollerScreen(Screen):
@@ -8340,6 +8465,53 @@ class NoteEditorScreen(Screen):
         self.app.pop_screen()
 
 
+PANE_DEFS = {
+    "abilities": ("Abilities", AbilityBlock, "panel ability-panel"),
+    "character": ("Character", CharacterInfo, "panel char-info-panel"),
+    "combat": ("Combat", CombatStats, "panel combat-panel"),
+    "shortcuts": ("Shortcuts", QuickActions, "panel actions-panel"),
+    "skills": ("Skills", SkillList, "panel skills-panel"),
+    "spell_slots": ("Spell Slots", SpellSlots, "panel spells-panel"),
+    "prepared_spells": ("Prepared Spells", PreparedSpells, "panel prepared-panel"),
+    "known_spells": ("Known Spells", KnownSpells, "panel prepared-panel"),
+    "weapons": ("Weapons", WeaponsPane, "panel skills-panel"),
+    "feats": ("Feats", FeatsPane, "panel skills-panel"),
+    "inventory": ("Inventory", InventoryPane, "panel skills-panel"),
+    "actions": ("Actions", ActionsPane, "panel skills-panel"),
+}
+
+DASHBOARD_LAYOUT_PRESETS = {
+    "balanced": {
+        "label": "Balanced",
+        "rows": [
+            ["abilities", "character", "combat", "shortcuts"],
+            ["skills", "spell_slots", "prepared_spells"],
+        ],
+    },
+    "spellcaster": {
+        "label": "Spellcaster",
+        "rows": [
+            ["abilities", "character", "combat", "shortcuts"],
+            ["skills", "spell_slots", "known_spells"],
+        ],
+    },
+    "martial": {
+        "label": "Martial",
+        "rows": [
+            ["abilities", "character", "combat", "shortcuts"],
+            ["skills", "weapons", "feats"],
+        ],
+    },
+    "wide": {
+        "label": "Wide",
+        "rows": [
+            ["abilities", "character", "combat", "shortcuts", "skills"],
+            ["weapons", "feats", "inventory", "spell_slots", "prepared_spells"],
+        ],
+    },
+}
+
+
 class MainDashboard(ScreenContextMixin, Screen):
     """Main character dashboard screen."""
 
@@ -8347,6 +8519,7 @@ class MainDashboard(ScreenContextMixin, Screen):
         Binding("escape", "back", "Back"),
         Binding("q", "open_character", "Characters"),
         Binding("?", "help", "Help"),
+        Binding("v", "layout", "Layout"),
         Binding("s", "spells", "Spells"),
         Binding("i", "inventory", "Inventory"),
         Binding("f", "features", "Features"),
@@ -8400,27 +8573,46 @@ class MainDashboard(ScreenContextMixin, Screen):
         yield Header()
         yield Container(
             Static("", id="dashboard-draft-notice", classes="draft-notice"),
-            # Top row: Abilities, Character Info, Combat, Quick Actions
-            Horizontal(
-                AbilityBlock(c, classes="panel ability-panel"),
-                CharacterInfo(c, classes="panel char-info-panel"),
-                CombatStats(c, classes="panel combat-panel"),
-                QuickActions(classes="panel actions-panel"),
-                classes="top-row",
-            ),
-            # Bottom row: Skills, Spell Slots, Prepared Spells
-            Horizontal(
-                SkillList(c, classes="panel skills-panel"),
-                Vertical(
-                    SpellSlots(c, classes="panel spells-panel"),
-                    PreparedSpells(c, classes="panel prepared-panel"),
-                    classes="spells-column",
-                ),
-                classes="bottom-row",
-            ),
+            *self._build_dashboard_rows(),
             id="dashboard",
         )
         yield Footer()
+
+    def _get_layout_state(self) -> tuple[str, list[str] | None]:
+        """Resolve dashboard layout and optional panels override."""
+        config = get_config_manager().config
+        layout = self.character.meta.dashboard_layout or config.ui.dashboard_layout or "balanced"
+        panels = self.character.meta.dashboard_panels
+        if panels is None:
+            panels = config.ui.dashboard_panels
+        return layout, panels
+
+    def _build_dashboard_rows(self) -> list[Horizontal]:
+        """Build dashboard rows based on layout settings."""
+        layout_name, panels = self._get_layout_state()
+        if panels:
+            layout_name = "custom"
+
+        if layout_name in DASHBOARD_LAYOUT_PRESETS:
+            rows = DASHBOARD_LAYOUT_PRESETS[layout_name]["rows"]
+        else:
+            panels = panels or DASHBOARD_LAYOUT_PRESETS["balanced"]["rows"][0] + DASHBOARD_LAYOUT_PRESETS["balanced"]["rows"][1]
+            rows = [panels[:4], panels[4:8]]
+
+        row_widgets: list[Horizontal] = []
+        for idx, row in enumerate(rows):
+            widgets = []
+            for pane_id in row:
+                pane_def = PANE_DEFS.get(pane_id)
+                if not pane_def:
+                    continue
+                _, pane_cls, pane_classes = pane_def
+                widgets.append(pane_cls(self.character, classes=pane_classes))
+            row_class = "top-row" if idx == 0 else "bottom-row"
+            if layout_name == "wide":
+                row_class = "wide-row"
+            row_widgets.append(Horizontal(*widgets, classes=row_class))
+        return row_widgets
 
     def on_mount(self) -> None:
         """Update draft notice on mount."""
@@ -8468,6 +8660,175 @@ class MainDashboard(ScreenContextMixin, Screen):
             self.notify(f"Resuming: {draft_data.get('name', 'Unknown')}")
         else:
             self.notify("No draft found", severity="warning")
+
+    def action_layout(self) -> None:
+        """Open dashboard layout settings."""
+        self.app.push_screen(DashboardLayoutScreen(self.character))
+
+
+class DashboardLayoutScreen(Screen):
+    """Configure dashboard layout presets and panels."""
+
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+        Binding("tab", "switch_column", "Switch Column"),
+        Binding("up", "up", "Up", show=False),
+        Binding("down", "down", "Down", show=False),
+        Binding("enter", "select", "Select/Toggle"),
+        Binding("space", "select", "Select/Toggle"),
+        Binding("g", "apply_global", "Apply Global"),
+        Binding("c", "apply_character", "Apply Character"),
+        Binding("r", "reset_character", "Reset Character"),
+    ]
+
+    def __init__(self, character: Character, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+        self.selected_column = "layouts"  # layouts | panes
+        self.layout_index = 0
+        self.pane_index = 0
+        self.layout_names = list(DASHBOARD_LAYOUT_PRESETS.keys()) + ["custom"]
+        self.pane_ids = list(PANE_DEFS.keys())
+        self.current_layout, self.current_panels = self._load_current_settings()
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Container(
+            Static("Dashboard Layout", classes="title"),
+            Static("Tab switch column • Enter/Space select • G global • C character • R reset", classes="subtitle"),
+            Horizontal(
+                Vertical(
+                    Static("LAYOUTS", classes="panel-title"),
+                    VerticalScroll(id="layout-list", classes="settings-list"),
+                    classes="panel settings-panel",
+                ),
+                Vertical(
+                    Static("PANES", classes="panel-title"),
+                    VerticalScroll(id="pane-list", classes="settings-list"),
+                    classes="panel settings-panel",
+                ),
+                classes="settings-row",
+            ),
+            id="layout-container",
+        )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._sync_indices()
+        self._refresh_lists()
+
+    def _load_current_settings(self) -> tuple[str, list[str]]:
+        config = get_config_manager().config
+        layout = self.character.meta.dashboard_layout or config.ui.dashboard_layout or "balanced"
+        panels = self.character.meta.dashboard_panels
+        if panels is None:
+            panels = config.ui.dashboard_panels
+        if panels:
+            return "custom", list(panels)
+        preset = DASHBOARD_LAYOUT_PRESETS.get(layout)
+        if preset:
+            flat = [p for row in preset["rows"] for p in row]
+            return layout, flat
+        flat = [p for row in DASHBOARD_LAYOUT_PRESETS["balanced"]["rows"] for p in row]
+        return "balanced", flat
+
+    def _sync_indices(self) -> None:
+        if self.current_layout in self.layout_names:
+            self.layout_index = self.layout_names.index(self.current_layout)
+
+    def _refresh_lists(self) -> None:
+        self._refresh_layout_list()
+        self._refresh_pane_list()
+
+    def _refresh_layout_list(self) -> None:
+        list_widget = self.query_one("#layout-list", VerticalScroll)
+        list_widget.remove_children()
+        for i, layout in enumerate(self.layout_names):
+            label = DASHBOARD_LAYOUT_PRESETS.get(layout, {}).get("label", "Custom")
+            selector = "▶ " if self.selected_column == "layouts" and i == self.layout_index else "  "
+            check = "✓" if layout == self.current_layout else "○"
+            list_widget.mount(Static(f"{selector}[{check}] {label}", classes="setting-row"))
+
+    def _refresh_pane_list(self) -> None:
+        list_widget = self.query_one("#pane-list", VerticalScroll)
+        list_widget.remove_children()
+        for i, pane_id in enumerate(self.pane_ids):
+            label = PANE_DEFS[pane_id][0]
+            selector = "▶ " if self.selected_column == "panes" and i == self.pane_index else "  "
+            check = "✓" if pane_id in self.current_panels else "○"
+            list_widget.mount(Static(f"{selector}[{check}] {label}", classes="setting-row"))
+
+    def action_switch_column(self) -> None:
+        self.selected_column = "panes" if self.selected_column == "layouts" else "layouts"
+        self._refresh_lists()
+
+    def action_up(self) -> None:
+        if self.selected_column == "layouts":
+            self.layout_index = (self.layout_index - 1) % len(self.layout_names)
+        else:
+            self.pane_index = (self.pane_index - 1) % len(self.pane_ids)
+        self._refresh_lists()
+
+    def action_down(self) -> None:
+        if self.selected_column == "layouts":
+            self.layout_index = (self.layout_index + 1) % len(self.layout_names)
+        else:
+            self.pane_index = (self.pane_index + 1) % len(self.pane_ids)
+        self._refresh_lists()
+
+    def action_select(self) -> None:
+        if self.selected_column == "layouts":
+            chosen = self.layout_names[self.layout_index]
+            if chosen != "custom":
+                preset = DASHBOARD_LAYOUT_PRESETS[chosen]
+                self.current_panels = [p for row in preset["rows"] for p in row]
+            self.current_layout = chosen
+        else:
+            pane = self.pane_ids[self.pane_index]
+            if pane in self.current_panels:
+                self.current_panels.remove(pane)
+            else:
+                self.current_panels.append(pane)
+            self.current_layout = "custom"
+        self._refresh_lists()
+
+    def action_apply_global(self) -> None:
+        config = get_config_manager().config
+        if self.current_layout == "custom":
+            config.ui.dashboard_layout = "custom"
+            config.ui.dashboard_panels = list(self.current_panels)
+        else:
+            config.ui.dashboard_layout = self.current_layout
+            config.ui.dashboard_panels = None
+        config.save()
+        self.notify("Saved as global default", severity="information")
+        self._close_and_refresh_dashboard()
+
+    def action_apply_character(self) -> None:
+        if self.current_layout == "custom":
+            self.character.meta.dashboard_layout = "custom"
+            self.character.meta.dashboard_panels = list(self.current_panels)
+        else:
+            self.character.meta.dashboard_layout = self.current_layout
+            self.character.meta.dashboard_panels = None
+        self.app.save_character()
+        self.notify("Saved for this character", severity="information")
+        self._close_and_refresh_dashboard()
+
+    def action_reset_character(self) -> None:
+        self.character.meta.dashboard_layout = None
+        self.character.meta.dashboard_panels = None
+        self.app.save_character()
+        self.notify("Character override cleared", severity="information")
+        self._close_and_refresh_dashboard()
+
+    def _close_and_refresh_dashboard(self) -> None:
+        self.app.pop_screen()
+        self.app.pop_screen()
+        self.app.push_screen(MainDashboard(self.character))
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
 
     def action_spells(self) -> None:
         """Open spells screen."""

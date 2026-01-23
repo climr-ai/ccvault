@@ -56,6 +56,8 @@ class CharacterMeta(BaseModel):
     created: datetime = Field(default_factory=datetime.now)
     modified: datetime = Field(default_factory=datetime.now)
     sync_id: Optional[str] = Field(default=None, description="Backend sync identifier")
+    dashboard_layout: Optional[str] = Field(default=None, description="Per-character dashboard layout preset")
+    dashboard_panels: Optional[list[str]] = Field(default=None, description="Per-character dashboard panels override")
 
 
 class CharacterClass(BaseModel):
