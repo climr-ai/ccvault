@@ -1477,26 +1477,26 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
 
         title.update(f"SKILL PROFICIENCIES - Choose {num_choices}")
 
-        # Build the display - clear both native options and mounted children
+        # Build the display using OptionList options (Textual doesn't render mounted children here)
         options_list.clear_options()
         options_list.remove_children()
 
         for i, skill in enumerate(skill_options):
             is_selected = skill in self.selected_skills
             prefix = r"\[X]" if is_selected else r"\[ ]"
-            marker = "▸ " if i == self.skill_selected_index else "  "
-            options_list.mount(Static(f"{marker}{prefix} {skill}"))
+            options_list.add_option(Option(f"{prefix} {skill}", id=f"skill_{i}"))
 
-        options_list.mount(Static(""))
-        options_list.mount(Static(f"  Selected: {len(self.selected_skills)}/{num_choices}"))
-        options_list.mount(Static(""))
-        options_list.mount(Static(r"  ↑↓ navigate, Space to toggle, Enter to continue, \[C] clear all"))
-        if len(self.selected_skills) == num_choices:
-            options_list.mount(Static("  Press Next to continue"))
+        if skill_options:
+            self._expected_highlight = self.skill_selected_index
+            options_list.highlighted = self.skill_selected_index
 
         options_list.display = True
         self.current_options = skill_options
-        description.update("")
+        selected_count = len(self.selected_skills)
+        hint = "↑↓ navigate, Space to toggle, Enter to continue, C clear all."
+        if selected_count == num_choices:
+            hint = f"{hint}\nPress Next to continue."
+        description.update(f"Selected: {selected_count}/{num_choices}\n{hint}")
 
     def _toggle_skill(self) -> None:
         """Toggle the currently highlighted skill selection."""
