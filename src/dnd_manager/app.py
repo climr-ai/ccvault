@@ -240,11 +240,21 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                 "skills": draft_data.get("skills", []),
                 "cantrips": draft_data.get("cantrips", []),
                 "spells": draft_data.get("spells", []),
+                "ability_state": draft_data.get("ability_state"),
             }
             # Restore skill/spell state
             self.selected_skills = self.char_data.get("skills", [])
             self.selected_cantrips = self.char_data.get("cantrips", [])
             self.selected_spells = self.char_data.get("spells", [])
+            # Restore ability state if present
+            ability_state = self.char_data.get("ability_state") or {}
+            if ability_state:
+                self.base_scores = list(ability_state.get("base_scores", self.base_scores))
+                self.score_assignments = dict(ability_state.get("score_assignments", self.score_assignments))
+                self.ability_method = ability_state.get("ability_method", self.ability_method)
+                self.bonus_mode = ability_state.get("bonus_mode", self.bonus_mode)
+                self.bonus_plus_2 = ability_state.get("bonus_plus_2", self.bonus_plus_2)
+                self.bonus_plus_1 = ability_state.get("bonus_plus_1", self.bonus_plus_1)
         else:
             self.step = 0
             self.char_data = {
@@ -259,6 +269,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                 "skills": [],
                 "cantrips": [],
                 "spells": [],
+                "ability_state": None,
             }
 
         self.current_options: list[str] = []
@@ -298,6 +309,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
 
     def _save_draft(self) -> None:
         """Auto-save current progress as draft."""
+        self._persist_ability_state()
         draft_data = {**self.char_data, "_step": self.step}
         self.draft_store.save_draft(draft_data)
 
