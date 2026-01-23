@@ -2623,7 +2623,7 @@ class WelcomeScreen(Screen):
 
     def action_open_character(self) -> None:
         """Open an existing character."""
-        self.app.action_open_character(return_to_dashboard=True)
+        self.app.action_open_character(return_to_dashboard=False)
 
     def action_quit(self) -> None:
         """Quit the application."""
@@ -2808,7 +2808,8 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
                 if not isinstance(self.app.screen, MainDashboard):
                     self.app.push_screen(MainDashboard(self.app.current_character))
             else:
-                self.app.push_screen(WelcomeScreen())
+                if not isinstance(self.app.screen, WelcomeScreen):
+                    self.app.push_screen(WelcomeScreen())
 
     def action_new_character(self) -> None:
         """Create new character instead."""
@@ -2854,7 +2855,7 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
         """Select the current character."""
         if self.characters:
             char_info = self.characters[self.selected_index]
-            self.app.load_character(char_info["path"], keep_current_screen=True)
+            self.app.load_character(char_info["path"])
 
     def on_key(self, event) -> None:
         """Handle letter keys for jump navigation."""
@@ -8427,7 +8428,7 @@ class MainDashboard(ScreenContextMixin, Screen):
 
     def action_back(self) -> None:
         """Return to the previous screen."""
-        self.app.pop_screen()
+        self.app.action_open_character(return_to_dashboard=True)
 
     def action_spells(self) -> None:
         """Open spells screen."""
@@ -9076,18 +9077,15 @@ class DNDManagerApp(App):
 
         self.push_screen(CharacterSelectScreen(char_info, return_to_dashboard=return_to_dashboard))
 
-    def load_character(self, path: Path, keep_current_screen: bool = False) -> None:
+    def load_character(self, path: Path) -> None:
         """Load a character from a path and switch to dashboard."""
         char = self.store.load_path(path)
         if char:
             self.current_character = char
-            if keep_current_screen:
-                self.push_screen(MainDashboard(char))
-            else:
-                # Remove all screens except the base, then push dashboard
-                while len(self.screen_stack) > 1:
-                    self.pop_screen()
-                self.push_screen(MainDashboard(char))
+            # Remove all screens except the base, then push dashboard
+            while len(self.screen_stack) > 1:
+                self.pop_screen()
+            self.push_screen(MainDashboard(char))
         else:
             self.notify("Failed to load character", severity="error")
 
