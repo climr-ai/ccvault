@@ -656,9 +656,6 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
 
     def _refresh_options(self) -> None:
         """Rebuild the options list. Only call on step transitions, not navigation."""
-        import datetime
-        log_file = "/tmp/dnd_scroll_debug.log"
-
         try:
             options_list = self.query_one("#options-list", OptionList)
         except Exception:
@@ -676,9 +673,6 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             options_list.highlighted = self.selected_option
         else:
             self._expected_highlight = 0
-
-        with open(log_file, "a") as f:
-            f.write(f"{datetime.datetime.now()} _refresh_options: {len(self.current_options)} options, highlighted={self.selected_option}, expected={self._expected_highlight}\n")
 
         self._refresh_details()
 
@@ -1737,22 +1731,15 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
 
     def _update_selection(self) -> None:
         """Update the OptionList to reflect current selection."""
-        import datetime
-        log_file = "/tmp/dnd_scroll_debug.log"
-
         try:
             options_list = self.query_one("#options-list", OptionList)
             if self.selected_option < len(self.current_options):
                 options_list.highlighted = self.selected_option
                 options_list.scroll_to_highlight()
-
-                with open(log_file, "a") as f:
-                    f.write(f"{datetime.datetime.now()} _update_selection: highlighted={self.selected_option}, scroll_to_highlight called\n")
-
             self._refresh_details()
-        except Exception as e:
-            with open(log_file, "a") as f:
-                f.write(f"ERROR in _update_selection: {e}\n")
+        except Exception:
+            # Screen not mounted yet
+            pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -6078,11 +6065,15 @@ class StatBonusScreen(Screen):
             return
 
         bonus = self.bonuses[self.selected_index]
-        self.character.stat_bonuses.remove(bonus)
-        self.app.save_character()
-        self.selected_index = max(0, self.selected_index - 1)
-        self._refresh_bonuses()
-        self.notify(f"Removed bonus: {bonus.source}")
+        if bonus in self.character.stat_bonuses:
+            self.character.stat_bonuses.remove(bonus)
+            self.app.save_character()
+            self.selected_index = max(0, self.selected_index - 1)
+            self._refresh_bonuses()
+            self.notify(f"Removed bonus: {bonus.source}")
+        else:
+            self._refresh_bonuses()
+            self.notify("Bonus already removed", severity="warning")
 
     def action_toggle_temporary(self) -> None:
         """Toggle temporary status of selected bonus."""

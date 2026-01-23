@@ -8,6 +8,17 @@ from typing import Optional
 from dnd_manager.dice.parser import DiceExpression, DiceGroup, DiceModifier, parse_dice_notation
 
 
+class DiceRollError(RuntimeError):
+    """Raised when a dice roll encounters an error."""
+
+    pass
+
+
+# Safety limits
+MAX_EXPLODE_ITERATIONS = 100  # Maximum explosions per dice group
+MAX_REROLL_ITERATIONS = 100  # Maximum rerolls per die
+
+
 @dataclass
 class SingleDieResult:
     """Result of rolling a single die."""
@@ -98,17 +109,31 @@ class RollResult:
 
 
 class DiceRoller:
-    """Dice rolling engine with support for D&D 5e mechanics."""
+    """Dice rolling engine with support for D&D 5e mechanics.
 
-    def __init__(self, rng: Optional[random.Random] = None):
+    Supports context manager protocol for automatic history cleanup:
+        with DiceRoller() as roller:
+            result = roller.roll("2d6+3")
+    """
+
+    def __init__(self, rng: Optional[random.Random] = None, max_history: int = 100):
         """Initialize the roller.
 
         Args:
             rng: Optional random number generator for reproducible rolls
+            max_history: Maximum number of rolls to keep in history (default 100)
         """
         self.rng = rng or random.Random()
         self.history: list[RollResult] = []
-        self.max_history = 100
+        self.max_history = max_history
+
+    def __enter__(self) -> "DiceRoller":
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, exc_type: Optional[type], exc_val: Optional[BaseException], exc_tb: Optional[object]) -> None:
+        """Exit context manager, clearing history."""
+        self.clear_history()
 
     def roll(self, notation: str, label: Optional[str] = None) -> RollResult:
         """Roll dice using standard notation.
@@ -171,10 +196,21 @@ class DiceRoller:
 
         # Handle exploding dice
         if group.modifier == DiceModifier.EXPLODE:
+            # Safety: d1 always explodes (max value is always 1), prevent infinite loop
+            if group.sides == 1:
+                raise DiceRollError(
+                    "Cannot use exploding dice with d1 (would cause infinite loop)"
+                )
             i = 0
+            explosion_count = 0
             while i < len(rolls):
                 if rolls[i].value == group.sides:
                     rolls[i].exploded = True
+                    explosion_count += 1
+                    if explosion_count > MAX_EXPLODE_ITERATIONS:
+                        raise DiceRollError(
+                            f"Exploding dice exceeded {MAX_EXPLODE_ITERATIONS} explosions"
+                        )
                     new_roll = self._roll_die(group.sides)
                     rolls.append(SingleDieResult(value=new_roll))
                 i += 1
@@ -190,9 +226,21 @@ class DiceRoller:
         # Handle reroll recursive (rr<N)
         if group.modifier == DiceModifier.REROLL and group.modifier_value:
             threshold = group.modifier_value
+            # Safety: if threshold >= sides, die can never reach threshold
+            if threshold >= group.sides:
+                raise DiceRollError(
+                    f"Reroll threshold {threshold} >= die sides {group.sides} "
+                    "(would cause infinite loop)"
+                )
             for r in rolls:
+                reroll_count = 0
                 while r.value < threshold:
                     r.rerolled = True
+                    reroll_count += 1
+                    if reroll_count > MAX_REROLL_ITERATIONS:
+                        raise DiceRollError(
+                            f"Recursive reroll exceeded {MAX_REROLL_ITERATIONS} iterations"
+                        )
                     r.value = self._roll_die(group.sides)
 
         # Handle keep highest
@@ -298,6 +346,17 @@ def get_roller() -> DiceRoller:
     if _default_roller is None:
         _default_roller = DiceRoller()
     return _default_roller
+
+
+def reset_roller() -> None:
+    """Reset the default dice roller, clearing its history.
+
+    Call this when shutting down to free memory from roll history.
+    """
+    global _default_roller
+    if _default_roller is not None:
+        _default_roller.clear_history()
+        _default_roller = None
 
 
 def roll(notation: str, label: Optional[str] = None) -> RollResult:

@@ -4,6 +4,9 @@ from typing import Any, Optional
 
 from dnd_manager.models.character import Character, CharacterClass, Feature, StatBonus
 
+# Valid ability names
+VALID_ABILITIES = frozenset(["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"])
+
 
 async def set_ability_score(
     character: Character,
@@ -11,6 +14,10 @@ async def set_ability_score(
     value: int,
 ) -> dict[str, Any]:
     """Set base ability score."""
+    ability = ability.lower()
+    if ability not in VALID_ABILITIES:
+        raise ValueError(f"Invalid ability '{ability}'. Must be one of: {', '.join(sorted(VALID_ABILITIES))}")
+
     score = getattr(character.abilities, ability)
     old_value = score.base
     old_total = score.total
@@ -121,14 +128,17 @@ async def level_up(
     if target_class == character.primary_class.name:
         character.primary_class.level += 1
     else:
-        # Find or create multiclass entry
+        # Find or create multiclass entry (handle None multiclass list)
+        multiclass = character.multiclass or []
         mc_entry = next(
-            (mc for mc in character.multiclass if mc.name == target_class),
+            (mc for mc in multiclass if mc.name == target_class),
             None
         )
         if mc_entry:
             mc_entry.level += 1
         else:
+            if character.multiclass is None:
+                character.multiclass = []
             character.multiclass.append(CharacterClass(name=target_class, level=1))
 
     # Apply HP

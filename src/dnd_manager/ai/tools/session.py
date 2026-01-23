@@ -160,76 +160,78 @@ IMPORTANT:
         iterations = 0
         final_response = ""
         self._last_tool_calls = []  # Reset tool call tracking
+        character_modified = False  # Track across all iterations
 
-        while iterations < self.max_tool_iterations:
-            iterations += 1
+        try:
+            while iterations < self.max_tool_iterations:
+                iterations += 1
 
-            # Call AI with tools
-            response = await self.provider.chat_with_tools(
-                messages=self.messages,
-                tools=tools,
-                tool_choice=tool_choice,
-            )
-
-            # After first iteration, switch back to AUTO
-            tool_choice = ToolChoice.AUTO
-
-            # Stream any text content
-            if response.content and stream_callback:
-                stream_callback(response.content)
-
-            # If no tool use, we're done
-            if not response.has_tool_use:
-                final_response = response.content
-                self.messages.append(AIMessage(
-                    role=MessageRole.ASSISTANT,
-                    content=response.content,
-                ))
-                break
-
-            # Accumulate text content
-            final_response = response.content
-
-            # Add assistant message with tool use blocks
-            self.messages.append(AIMessage(
-                role=MessageRole.ASSISTANT,
-                content=response.tool_use,  # List of ToolUseBlocks
-            ))
-
-            # Execute tools and collect results
-            tool_results = []
-            character_modified = False
-
-            for tool_use in response.tool_use:
-                result = await self._executor.execute(
-                    tool_name=tool_use.name,
-                    tool_input=tool_use.input,
-                    tool_use_id=tool_use.id,
+                # Call AI with tools
+                response = await self.provider.chat_with_tools(
+                    messages=self.messages,
+                    tools=tools,
+                    tool_choice=tool_choice,
                 )
 
-                # Track tool call with result
-                self._last_tool_calls.append(ToolCall(
-                    name=tool_use.name,
-                    input=tool_use.input,
-                    result=result.to_dict() if hasattr(result, 'to_dict') else {"status": "success" if result.success else "error"},
+                # After first iteration, switch back to AUTO
+                tool_choice = ToolChoice.AUTO
+
+                # Stream any text content
+                if response.content and stream_callback:
+                    stream_callback(response.content)
+
+                # If no tool use, we're done
+                if not response.has_tool_use:
+                    final_response = response.content
+                    self.messages.append(AIMessage(
+                        role=MessageRole.ASSISTANT,
+                        content=response.content,
+                    ))
+                    break
+
+                # Accumulate text content
+                final_response = response.content
+
+                # Add assistant message with tool use blocks
+                self.messages.append(AIMessage(
+                    role=MessageRole.ASSISTANT,
+                    content=response.tool_use,  # List of ToolUseBlocks
                 ))
 
-                tool_results.append(ToolResultBlock(
-                    tool_use_id=tool_use.id,
-                    content=result.to_json(),
-                    is_error=not result.success,
+                # Execute tools and collect results
+                tool_results = []
+
+                for tool_use in response.tool_use:
+                    result = await self._executor.execute(
+                        tool_name=tool_use.name,
+                        tool_input=tool_use.input,
+                        tool_use_id=tool_use.id,
+                    )
+
+                    # Track tool call with result
+                    self._last_tool_calls.append(ToolCall(
+                        name=tool_use.name,
+                        input=tool_use.input,
+                        result=result.to_dict() if hasattr(result, 'to_dict') else {"status": "success" if result.success else "error"},
+                    ))
+
+                    tool_results.append(ToolResultBlock(
+                        tool_use_id=tool_use.id,
+                        content=result.to_json(),
+                        is_error=not result.success,
+                    ))
+
+                    if result.success and result.changes_made:
+                        character_modified = True
+
+                # Add tool results message
+                self.messages.append(AIMessage(
+                    role=MessageRole.TOOL_RESULT,
+                    content=tool_results,
                 ))
 
-                if result.success and result.changes_made:
-                    character_modified = True
-
-            # Add tool results message
-            self.messages.append(AIMessage(
-                role=MessageRole.TOOL_RESULT,
-                content=tool_results,
-            ))
-
-            # Save character if modified
+        finally:
+            # Always save character if modified, even on exception
             if character_modified and self.auto_save:
                 self._save_character()
 
@@ -272,8 +274,10 @@ IMPORTANT:
     def refresh_character(self) -> None:
         """Reload character from storage."""
         if self.store and self.character_name:
-            self.character = self.store.load(self.character_name)
-            self._executor.character = self.character
+            loaded = self.store.load(self.character_name)
+            if loaded is not None:
+                self.character = loaded
+                self._executor.character = self.character
 
     def clear_history(self) -> None:
         """Clear conversation history, keeping system prompt."""

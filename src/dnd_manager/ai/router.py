@@ -13,6 +13,7 @@ Routing strategy:
 
 import asyncio
 import os
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -39,44 +40,56 @@ class QueryComplexity(str, Enum):
 
 @dataclass
 class QuotaTracker:
-    """Track rate limit state for a model."""
+    """Track rate limit state for a model.
+
+    Note: This class is NOT thread-safe. All access should be through
+    RouterState methods which provide proper synchronization.
+    """
     model: str
     requests_today: int = 0
     last_request: Optional[datetime] = None
     rate_limited_until: Optional[datetime] = None
     daily_limit: int = 50  # Conservative estimate
 
+    def _reset_if_new_day(self) -> None:
+        """Reset daily counter if it's a new day. Must be called under lock."""
+        now = datetime.now()
+        if self.last_request and self.last_request.date() < now.date():
+            self.requests_today = 0
+
     def is_available(self) -> bool:
-        """Check if model is available for use."""
+        """Check if model is available for use. Must be called under lock."""
         now = datetime.now()
 
         # Check if rate limited
         if self.rate_limited_until and now < self.rate_limited_until:
             return False
 
-        # Check daily quota (reset at midnight)
-        if self.last_request and self.last_request.date() < now.date():
-            self.requests_today = 0
+        # Reset daily quota if new day
+        self._reset_if_new_day()
 
         return self.requests_today < self.daily_limit
 
-    def record_request(self):
-        """Record a successful request."""
+    def record_request(self) -> None:
+        """Record a successful request. Must be called under lock."""
+        # Reset if new day before incrementing
+        self._reset_if_new_day()
         self.requests_today += 1
         self.last_request = datetime.now()
 
-    def record_rate_limit(self, retry_after_seconds: int = 60):
-        """Record a rate limit error."""
+    def record_rate_limit(self, retry_after_seconds: int = 60) -> None:
+        """Record a rate limit error. Must be called under lock."""
         self.rate_limited_until = datetime.now() + timedelta(seconds=retry_after_seconds)
 
 
 @dataclass
 class RouterState:
-    """State for the intelligent router."""
+    """Thread-safe state for the intelligent router."""
     quotas: dict[str, QuotaTracker] = field(default_factory=dict)
+    _lock: threading.Lock = field(default_factory=threading.Lock)
 
-    def get_quota(self, model: str) -> QuotaTracker:
-        """Get or create quota tracker for a model."""
+    def _get_or_create_quota(self, model: str) -> QuotaTracker:
+        """Get or create quota tracker for a model. Must be called with lock held."""
         if model not in self.quotas:
             # Set daily limits based on known free tier limits
             daily_limits = {
@@ -90,6 +103,29 @@ class RouterState:
                 daily_limit=daily_limits.get(model, 50)
             )
         return self.quotas[model]
+
+    def get_quota(self, model: str) -> QuotaTracker:
+        """Get or create quota tracker for a model (thread-safe)."""
+        with self._lock:
+            return self._get_or_create_quota(model)
+
+    def is_model_available(self, model: str) -> bool:
+        """Check if a model is available for use (thread-safe)."""
+        with self._lock:
+            quota = self._get_or_create_quota(model)
+            return quota.is_available()
+
+    def record_request(self, model: str) -> None:
+        """Record a successful request (thread-safe)."""
+        with self._lock:
+            quota = self._get_or_create_quota(model)
+            quota.record_request()
+
+    def record_rate_limit(self, model: str, retry_after_seconds: int = 60) -> None:
+        """Record a rate limit error (thread-safe)."""
+        with self._lock:
+            quota = self._get_or_create_quota(model)
+            quota.record_rate_limit(retry_after_seconds)
 
 
 # Classification prompt for Flash-Lite
@@ -227,8 +263,7 @@ class GeminiRouter(AIProvider):
         candidates = self.MODEL_TIERS[complexity]
 
         for model in candidates:
-            quota = self._state.get_quota(model)
-            if quota.is_available():
+            if self._state.is_model_available(model):
                 return model
 
         # All exhausted, return last resort
@@ -271,7 +306,7 @@ class GeminiRouter(AIProvider):
                 contents=contents,
                 config=config,
             )
-            quota.record_request()
+            self._state.record_request(model)
 
             return AIResponse(
                 content=response.text or "",
@@ -283,7 +318,7 @@ class GeminiRouter(AIProvider):
         except Exception as e:
             error_str = str(e).lower()
             if "429" in error_str or "rate" in error_str or "quota" in error_str:
-                quota.record_rate_limit()
+                self._state.record_rate_limit(model)
                 raise RateLimitError(model, str(e))
             raise
 
@@ -314,8 +349,7 @@ class GeminiRouter(AIProvider):
         last_error = None
 
         for model in candidates:
-            quota = self._state.get_quota(model)
-            if not quota.is_available():
+            if not self._state.is_model_available(model):
                 continue
 
             try:
@@ -376,8 +410,7 @@ class GeminiRouter(AIProvider):
         last_error = None
 
         for candidate_model in candidates:
-            quota = self._state.get_quota(candidate_model)
-            if not quota.is_available():
+            if not self._state.is_model_available(candidate_model):
                 continue
 
             try:
@@ -451,7 +484,7 @@ class GeminiRouter(AIProvider):
                 contents=contents,
                 config=config,
             )
-            quota.record_request()
+            self._state.record_request(model)
 
             # Parse response for function calls and text
             tool_use_blocks = []
@@ -464,7 +497,7 @@ class GeminiRouter(AIProvider):
                     elif hasattr(part, "function_call") and part.function_call:
                         fc = part.function_call
                         tool_use_blocks.append(ToolUseBlock(
-                            id=f"toolu_{uuid.uuid4().hex[:24]}",
+                            id=f"toolu_{uuid.uuid4().hex}",
                             name=fc.name,
                             input=dict(fc.args) if fc.args else {},
                         ))
@@ -494,7 +527,7 @@ class GeminiRouter(AIProvider):
         except Exception as e:
             error_str = str(e).lower()
             if "429" in error_str or "rate" in error_str or "quota" in error_str:
-                quota.record_rate_limit()
+                self._state.record_rate_limit(model)
                 raise RateLimitError(model, str(e))
             raise
 
@@ -615,30 +648,36 @@ class GeminiRouter(AIProvider):
         )
 
         try:
+            chunk_count = 0
             async for chunk in client.aio.models.generate_content_stream(
                 model=selected_model,
                 contents=contents,
                 config=config,
             ):
-                quota.record_request()
+                chunk_count += 1
                 if chunk.text:
                     yield chunk.text
+            # Record request only once after streaming completes
+            if chunk_count > 0:
+                self._state.record_request(selected_model)
         except Exception as e:
             if "429" in str(e) or "rate" in str(e).lower():
-                quota.record_rate_limit()
+                self._state.record_rate_limit(selected_model)
             raise
 
     def get_quota_status(self) -> dict[str, dict]:
-        """Get current quota status for all models."""
+        """Get current quota status for all models (thread-safe snapshot)."""
         status = {}
         for model in self.available_models:
-            quota = self._state.get_quota(model)
-            status[model] = {
-                "requests_today": quota.requests_today,
-                "daily_limit": quota.daily_limit,
-                "available": quota.is_available(),
-                "rate_limited_until": quota.rate_limited_until.isoformat() if quota.rate_limited_until else None,
-            }
+            # Get thread-safe snapshot of quota state
+            with self._state._lock:
+                quota = self._state._get_or_create_quota(model)
+                status[model] = {
+                    "requests_today": quota.requests_today,
+                    "daily_limit": quota.daily_limit,
+                    "available": quota.is_available(),
+                    "rate_limited_until": quota.rate_limited_until.isoformat() if quota.rate_limited_until else None,
+                }
         return status
 
 

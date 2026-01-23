@@ -42,6 +42,18 @@ class StorageError(Exception):
     pass
 
 
+class FilenameCollisionError(StorageError):
+    """Raised when a sanitized filename would collide with an existing file."""
+    def __init__(self, original_name: str, sanitized_name: str, existing_path: Path):
+        self.original_name = original_name
+        self.sanitized_name = sanitized_name
+        self.existing_path = existing_path
+        super().__init__(
+            f"Filename collision: '{original_name}' sanitizes to '{sanitized_name}' "
+            f"which already exists at {existing_path}"
+        )
+
+
 class CorruptedFileError(StorageError):
     """Raised when a file is corrupted and cannot be loaded."""
     def __init__(self, path: Path, message: str, original_error: Optional[Exception] = None):
@@ -116,20 +128,60 @@ class YAMLStore(Generic[T]):
 
         return safe or "unnamed"
 
-    def save(self, name: str, data: T, create_backup: bool = True) -> Path:
+    def _check_collision(self, name: str, allow_overwrite: bool = False) -> None:
+        """Check if saving a file would cause a collision.
+
+        Args:
+            name: Original name to save
+            allow_overwrite: If True, allows overwriting a file with the exact same original name
+
+        Raises:
+            FilenameCollisionError: If the sanitized name collides with a different file
+        """
+        sanitized = self._sanitize_filename(name)
+        path = self.directory / f"{sanitized}{self.extension}"
+
+        if not path.exists():
+            return
+
+        # File exists - check if it's the same logical entity
+        # We need to determine if we're overwriting the same character or a different one
+        # Read the existing file to check
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                existing_data = yaml.safe_load(f)
+
+            # If the existing file has a name field, compare it
+            existing_name = existing_data.get("name") if existing_data else None
+
+            if existing_name and existing_name.lower() != name.lower():
+                # Different logical entity - this is a collision
+                raise FilenameCollisionError(name, sanitized, path)
+        except (yaml.YAMLError, OSError):
+            # Can't read existing file - if we're not allowing overwrite, raise
+            if not allow_overwrite:
+                raise FilenameCollisionError(name, sanitized, path)
+
+    def save(self, name: str, data: T, create_backup: bool = True, check_collision: bool = True) -> Path:
         """Save a model to YAML file with auto-backup.
 
         Args:
             name: Name of the file (without extension)
             data: Model to save
             create_backup: Whether to backup existing file before overwriting
+            check_collision: Whether to check for filename collisions
 
         Returns:
             Path to the saved file
 
         Raises:
+            FilenameCollisionError: If the sanitized name collides with a different file
             StorageError: If save fails
         """
+        # Check for collision before proceeding
+        if check_collision:
+            self._check_collision(name, allow_overwrite=True)
+
         path = self._get_path(name)
 
         # Create backup of existing file
@@ -160,11 +212,23 @@ class YAMLStore(Generic[T]):
             temp_path.replace(path)
             logger.debug(f"Saved {name} to {path}")
 
-        except Exception as e:
-            # Clean up temp file
+        except (OSError, IOError) as e:
+            # File system errors (permissions, disk full, etc.)
             if temp_path.exists():
                 temp_path.unlink()
-            logger.error(f"Failed to save {name}: {e}")
+            logger.error(f"Failed to save {name} (I/O error): {e}")
+            raise StorageError(f"Failed to save {name}: {e}") from e
+        except yaml.YAMLError as e:
+            # YAML serialization/parsing errors
+            if temp_path.exists():
+                temp_path.unlink()
+            logger.error(f"Failed to save {name} (YAML error): {e}")
+            raise StorageError(f"Failed to save {name}: {e}") from e
+        except (TypeError, ValueError) as e:
+            # Data conversion errors
+            if temp_path.exists():
+                temp_path.unlink()
+            logger.error(f"Failed to save {name} (data error): {e}")
             raise StorageError(f"Failed to save {name}: {e}") from e
 
         return path
@@ -175,10 +239,7 @@ class YAMLStore(Generic[T]):
         Keeps only the most recent `max_backups` backup files.
         Uses config defaults if max_backups not specified.
         """
-        if not path.exists():
-            return None
-
-        # Get config values
+        # Get config values (don't check exists() - just try to copy)
         config_max_backups, backup_dir_name = _get_storage_config()
         if max_backups is None:
             max_backups = config_max_backups
@@ -195,35 +256,74 @@ class YAMLStore(Generic[T]):
             shutil.copy2(path, backup_path)
             logger.debug(f"Created backup: {backup_path}")
 
-            # Clean up old backups
-            backups = sorted(
-                backup_dir.glob(f"{path.stem}_*{path.suffix}"),
-                key=lambda p: p.stat().st_mtime,
-                reverse=True
+            # Clean up old backups with safer validation
+            # Use stricter pattern: stem_YYYYMMDD_HHMMSS.extension
+            import re
+            backup_pattern = re.compile(
+                rf"^{re.escape(path.stem)}_\d{{8}}_\d{{6}}{re.escape(path.suffix)}$"
             )
-            for old_backup in backups[max_backups:]:
-                old_backup.unlink()
-                logger.debug(f"Removed old backup: {old_backup}")
+
+            valid_backups = []
+            for candidate in backup_dir.iterdir():
+                if not backup_pattern.match(candidate.name):
+                    continue
+                try:
+                    mtime = candidate.stat().st_mtime
+                    valid_backups.append((candidate, mtime))
+                except (OSError, FileNotFoundError):
+                    # File was deleted or inaccessible, skip
+                    continue
+
+            # Sort by mtime descending (newest first)
+            valid_backups.sort(key=lambda x: x[1], reverse=True)
+
+            # Remove old backups beyond the limit
+            for old_backup, _ in valid_backups[max_backups:]:
+                try:
+                    old_backup.unlink()
+                    logger.debug(f"Removed old backup: {old_backup}")
+                except (OSError, FileNotFoundError):
+                    # File was already deleted, ignore
+                    pass
 
             return backup_path
 
-        except Exception as e:
+        except FileNotFoundError:
+            # Source file doesn't exist - not an error, just nothing to backup
+            return None
+        except (OSError, IOError, PermissionError) as e:
             logger.warning(f"Failed to create backup: {e}")
             return None
 
     def _get_latest_backup(self, name: str) -> Optional[Path]:
         """Get the most recent backup for a file."""
+        import re
         _, backup_dir_name = _get_storage_config()
         backup_dir = self.directory / backup_dir_name
         if not backup_dir.exists():
             return None
 
-        backups = sorted(
-            backup_dir.glob(f"{name}_*{self.extension}"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
+        # Use stricter pattern: name_YYYYMMDD_HHMMSS.extension
+        backup_pattern = re.compile(
+            rf"^{re.escape(name)}_\d{{8}}_\d{{6}}{re.escape(self.extension)}$"
         )
-        return backups[0] if backups else None
+
+        valid_backups = []
+        for candidate in backup_dir.iterdir():
+            if not backup_pattern.match(candidate.name):
+                continue
+            try:
+                mtime = candidate.stat().st_mtime
+                valid_backups.append((candidate, mtime))
+            except (OSError, FileNotFoundError):
+                continue
+
+        if not valid_backups:
+            return None
+
+        # Return newest backup
+        valid_backups.sort(key=lambda x: x[1], reverse=True)
+        return valid_backups[0][0]
 
     def load(self, name: str, try_recovery: bool = True) -> Optional[T]:
         """Load a model from YAML file.
@@ -546,36 +646,48 @@ class DraftStore:
         self._draft_file = self.directory / "character_creation.yaml"
 
     def save_draft(self, draft_data: dict) -> None:
-        """Save character creation draft."""
+        """Save character creation draft (atomic write)."""
         draft_data["_draft_timestamp"] = datetime.now().isoformat()
+        temp_file = self._draft_file.with_suffix(".yaml.tmp")
         try:
-            with open(self._draft_file, "w", encoding="utf-8") as f:
+            with open(temp_file, "w", encoding="utf-8") as f:
                 yaml.dump(draft_data, f, default_flow_style=False, allow_unicode=True)
+            # Atomic rename
+            temp_file.replace(self._draft_file)
             logger.debug(f"Saved draft: {self._draft_file}")
         except Exception as e:
+            # Clean up temp file on failure
+            if temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except OSError:
+                    pass
             logger.warning(f"Failed to save draft: {e}")
 
     def load_draft(self) -> Optional[dict]:
         """Load character creation draft if exists."""
-        if not self._draft_file.exists():
-            return None
         try:
             with open(self._draft_file, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             logger.debug(f"Loaded draft: {self._draft_file}")
             return data
-        except Exception as e:
+        except FileNotFoundError:
+            # No draft exists
+            return None
+        except (OSError, yaml.YAMLError) as e:
             logger.warning(f"Failed to load draft: {e}")
             return None
 
     def clear_draft(self) -> None:
         """Delete the draft file."""
-        if self._draft_file.exists():
-            try:
-                self._draft_file.unlink()
-                logger.debug("Cleared draft")
-            except Exception as e:
-                logger.warning(f"Failed to clear draft: {e}")
+        try:
+            self._draft_file.unlink()
+            logger.debug("Cleared draft")
+        except FileNotFoundError:
+            # Already deleted, that's fine
+            pass
+        except OSError as e:
+            logger.warning(f"Failed to clear draft: {e}")
 
     def has_draft(self) -> bool:
         """Check if a draft exists."""

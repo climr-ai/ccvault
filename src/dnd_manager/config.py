@@ -6,10 +6,11 @@ Config location: ~/.config/dnd-manager/config.yaml (or OS-appropriate equivalent
 
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from platformdirs import user_config_dir, user_data_dir
 import yaml
 
@@ -28,35 +29,53 @@ SENSITIVE_KEYS = {
 
 
 class CharacterDefaults(BaseModel):
-    """Default values for new characters."""
+    """Default values for new characters with validation."""
 
-    name: str = Field(default="New Hero", description="Default character name")
-    class_name: str = Field(default="Fighter", description="Default class")
-    species: str = Field(default="Human", description="Default species")
-    background: str = Field(default="Soldier", description="Default background")
+    name: str = Field(default="New Hero", min_length=1, max_length=100, description="Default character name")
+    class_name: str = Field(default="Fighter", min_length=1, max_length=50, description="Default class")
+    species: str = Field(default="Human", min_length=1, max_length=50, description="Default species")
+    background: str = Field(default="Soldier", min_length=1, max_length=50, description="Default background")
     ruleset: str = Field(default="dnd2024", description="Default ruleset (dnd2014, dnd2024, tov)")
+
+    @field_validator("ruleset")
+    @classmethod
+    def validate_ruleset(cls, v: str) -> str:
+        """Validate that ruleset is a known value."""
+        valid_rulesets = {"dnd2014", "dnd2024", "tov"}
+        if v.lower() not in valid_rulesets:
+            raise ValueError(f"Invalid ruleset '{v}', must be one of: {', '.join(sorted(valid_rulesets))}")
+        return v.lower()
 
 
 class GameRules(BaseModel):
-    """D&D game rule constants."""
+    """D&D game rule constants with validation."""
 
-    max_level: int = Field(default=20, description="Maximum character level")
-    min_level: int = Field(default=1, description="Minimum character level")
-    base_ability_score: int = Field(default=10, description="Default ability score value")
-    min_ability_score: int = Field(default=1, description="Minimum ability score")
-    max_ability_score: int = Field(default=30, description="Maximum ability score (with magic)")
-    standard_ability_cap: int = Field(default=20, description="Ability score cap before magic items")
-    default_ac: int = Field(default=10, description="Default armor class")
-    default_speed: int = Field(default=30, description="Default movement speed in feet")
-    death_saves_required: int = Field(default=3, description="Death saves needed to stabilize/die")
+    max_level: int = Field(default=20, ge=1, le=30, description="Maximum character level")
+    min_level: int = Field(default=1, ge=1, le=20, description="Minimum character level")
+    base_ability_score: int = Field(default=10, ge=1, le=30, description="Default ability score value")
+    min_ability_score: int = Field(default=1, ge=1, le=10, description="Minimum ability score")
+    max_ability_score: int = Field(default=30, ge=20, le=50, description="Maximum ability score (with magic)")
+    standard_ability_cap: int = Field(default=20, ge=15, le=30, description="Ability score cap before magic items")
+    default_ac: int = Field(default=10, ge=0, le=30, description="Default armor class")
+    default_speed: int = Field(default=30, ge=0, le=120, description="Default movement speed in feet")
+    death_saves_required: int = Field(default=3, ge=1, le=5, description="Death saves needed to stabilize/die")
     default_hit_die: str = Field(default="d8", description="Default hit die if not specified")
+
+    @field_validator("default_hit_die")
+    @classmethod
+    def validate_hit_die(cls, v: str) -> str:
+        """Validate that hit die is a valid die notation."""
+        valid_dice = {"d4", "d6", "d8", "d10", "d12", "d20"}
+        if v.lower() not in valid_dice:
+            raise ValueError(f"Invalid hit die '{v}', must be one of: {', '.join(sorted(valid_dice))}")
+        return v.lower()
 
 
 class AIGenerationConfig(BaseModel):
-    """AI text generation parameters."""
+    """AI text generation parameters with validation."""
 
-    max_tokens: int = Field(default=1024, description="Maximum tokens in AI response")
-    temperature: float = Field(default=0.7, description="AI temperature (0.0-1.0)")
+    max_tokens: int = Field(default=1024, ge=1, le=32000, description="Maximum tokens in AI response")
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="AI temperature (0.0-2.0)")
 
 
 class StorageConfig(BaseModel):
@@ -333,18 +352,23 @@ class Config(BaseModel):
             with open(config_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
 
+            # Create backup BEFORE validation/migration in case something goes wrong
+            import shutil
+            backup_path = config_path.with_suffix(".yaml.pre_load_backup")
+            try:
+                shutil.copy2(config_path, backup_path)
+            except (OSError, IOError) as backup_error:
+                logger.warning(f"Failed to create pre-load backup: {backup_error}")
+
             # Run migrations if needed
             data = migrate_config(data)
 
             try:
                 config = cls.model_validate(data)
-            except Exception as e:
-                # If validation fails, log the error and create backup
-                logger.warning(f"Config validation failed: {e}. Creating backup and using defaults.")
-                backup_path = config_path.with_suffix(".yaml.backup")
-                import shutil
-                shutil.copy2(config_path, backup_path)
-                logger.info(f"Old config backed up to: {backup_path}")
+            except (ValueError, TypeError) as e:
+                # Validation error - config data is invalid, use defaults
+                logger.warning(f"Config validation failed: {e}. Using defaults.")
+                logger.info(f"Original config preserved at: {backup_path}")
                 config = cls()
 
             # Save if migrations were applied
@@ -359,12 +383,45 @@ class Config(BaseModel):
         return config
 
     def save(self) -> None:
-        """Save configuration to file."""
+        """Save configuration to file with backup and atomic write."""
+        import shutil
+        import tempfile
+
         config_path = self.get_config_path()
         data = self.model_dump(mode="json")
 
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        # Create backup of existing config if it exists
+        if config_path.exists():
+            backup_path = config_path.with_suffix(".yaml.bak")
+            try:
+                shutil.copy2(config_path, backup_path)
+            except (OSError, IOError) as e:
+                logger.warning(f"Failed to create config backup: {e}")
+
+        # Write to temp file first, then atomic rename
+        try:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            # Write to temp file in same directory for atomic rename
+            fd, temp_path = tempfile.mkstemp(
+                dir=config_path.parent,
+                prefix=".config_",
+                suffix=".yaml.tmp"
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+                # Atomic rename
+                Path(temp_path).replace(config_path)
+            except Exception:
+                # Clean up temp file on error
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+                raise
+        except (OSError, IOError) as e:
+            logger.error(f"Failed to save config: {e}")
+            raise
 
     def get_character_directory(self) -> Path:
         """Get the character storage directory."""
@@ -416,6 +473,13 @@ class ConfigManager:
             The config value, or None if not found
         """
         parts = key.split(".")
+
+        # Validate no part accesses private/protected attributes
+        for part in parts:
+            if part.startswith("_"):
+                logger.warning(f"Attempted to access private attribute: {key}")
+                return None
+
         obj: Any = self.config
 
         for part in parts:
@@ -441,6 +505,12 @@ class ConfigManager:
         parts = key.split(".")
         if len(parts) < 1:
             return False
+
+        # Validate no part accesses private/protected attributes
+        for part in parts:
+            if part.startswith("_"):
+                logger.warning(f"Attempted to set private attribute: {key}")
+                return False
 
         obj: Any = self.config
 
@@ -540,16 +610,19 @@ def _mask_key(key: str) -> str:
     return key[:4] + "*" * (len(key) - 8) + key[-4:]
 
 
-# Global config manager instance
+# Global config manager instance with thread-safe initialization
 _config_manager: Optional[ConfigManager] = None
+_config_manager_lock = threading.Lock()
 
 
 def get_config_manager() -> ConfigManager:
-    """Get the global config manager instance."""
+    """Get the global config manager instance (thread-safe)."""
     global _config_manager
-    if _config_manager is None:
-        _config_manager = ConfigManager()
-    return _config_manager
+
+    with _config_manager_lock:
+        if _config_manager is None:
+            _config_manager = ConfigManager()
+        return _config_manager
 
 
 def get_config() -> Config:

@@ -14,6 +14,10 @@ async def add_item(
     equipped: bool = False,
 ) -> dict[str, Any]:
     """Add an item to inventory."""
+    # Ensure equipment.items exists
+    if character.equipment.items is None:
+        character.equipment.items = []
+
     # Check if item already exists
     existing = next(
         (i for i in character.equipment.items if i.name.lower() == name.lower()),
@@ -55,8 +59,9 @@ async def remove_item(
     quantity: Optional[int] = None,
 ) -> dict[str, Any]:
     """Remove an item from inventory."""
+    items = character.equipment.items if character.equipment and character.equipment.items else []
     item = next(
-        (i for i in character.equipment.items if i.name.lower() == name.lower()),
+        (i for i in items if i.name.lower() == name.lower()),
         None
     )
 
@@ -92,8 +97,9 @@ async def equip_item(
     equipped: bool = True,
 ) -> dict[str, Any]:
     """Equip or unequip an item."""
+    items = character.equipment.items if character.equipment and character.equipment.items else []
     item = next(
-        (i for i in character.equipment.items if i.name.lower() == name.lower()),
+        (i for i in items if i.name.lower() == name.lower()),
         None
     )
 

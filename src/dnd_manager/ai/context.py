@@ -1,11 +1,14 @@
 """Character context building for AI conversations."""
 
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
 from dnd_manager.models.character import Character
 from dnd_manager.data.custom import CustomContent, get_custom_content_store
 from dnd_manager.data.balance import get_balance_guidelines, get_homebrew_prompt
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -569,7 +572,13 @@ def build_custom_content_context() -> Optional[str]:
                 lines.append(f"  (+{len(content.feats) - 10} more)")
 
         return "\n".join(lines)
-    except Exception:
+    except (OSError, IOError) as e:
+        # File system errors loading custom content
+        logger.debug(f"Failed to load custom content: {e}")
+        return None
+    except (KeyError, TypeError, AttributeError) as e:
+        # Data structure issues in custom content
+        logger.warning(f"Invalid custom content data: {e}")
         return None
 
 
@@ -704,8 +713,10 @@ Be collaborative, not restrictive. Explain your reasoning.""" + tool_guidance,
             data_summary = layer.get_data_summary()
             prompt += f"\n\n--- Available Game Data ---\n{data_summary}"
             prompt += "\n\nYou have access to detailed information about all the content listed above. Reference specific spells, items, monsters, classes, etc. when relevant to provide accurate information."
-        except Exception:
-            pass  # Gracefully skip if semantic layer fails
+        except ImportError:
+            logger.debug("Semantic layer not available")
+        except (RuntimeError, AttributeError) as e:
+            logger.debug(f"Semantic layer failed: {e}")
 
     return prompt
 
@@ -745,9 +756,12 @@ def build_homebrew_system_prompt(
         if approach:
             prompt += f"\n\n--- Your Approach ---\n{approach}"
 
-    except Exception:
-        # If guidelines fail to load, continue without them
-        pass
+    except (OSError, IOError) as e:
+        # File system errors loading guidelines
+        logger.debug(f"Failed to load balance guidelines: {e}")
+    except (KeyError, TypeError, AttributeError) as e:
+        # Data structure issues in guidelines
+        logger.warning(f"Invalid balance guidelines data: {e}")
 
     return prompt
 

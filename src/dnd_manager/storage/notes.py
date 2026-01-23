@@ -7,13 +7,19 @@ This module provides:
 - Character and campaign association
 """
 
+import atexit
+import logging
+import re
 import sqlite3
 import json
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional, Any
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 from platformdirs import user_data_dir
 
@@ -55,18 +61,58 @@ class SessionNote:
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "SessionNote":
-        """Create from database row."""
+        """Create from database row.
+
+        Handles corrupted JSON fields gracefully by returning defaults.
+        """
+        # Safely parse JSON fields with logging
+        tags: list[str] = []
+        if row["tags"]:
+            try:
+                tags = json.loads(row["tags"])
+            except json.JSONDecodeError as e:
+                logger.warning(f"Corrupted tags JSON in note {row['id']}: {e}")
+
+        embedding: Optional[list[float]] = None
+        if row["embedding"]:
+            try:
+                embedding = json.loads(row["embedding"])
+            except json.JSONDecodeError as e:
+                logger.warning(f"Corrupted embedding JSON in note {row['id']}: {e}")
+
+        # Safely parse dates with logging
+        session_date_val = date.today()
+        if row["session_date"]:
+            try:
+                session_date_val = date.fromisoformat(row["session_date"])
+            except ValueError as e:
+                logger.warning(f"Invalid session_date in note {row['id']}: {e}")
+
+        created_at_val: Optional[datetime] = None
+        if row["created_at"]:
+            try:
+                created_at_val = datetime.fromisoformat(row["created_at"])
+            except ValueError:
+                pass
+
+        updated_at_val: Optional[datetime] = None
+        if row["updated_at"]:
+            try:
+                updated_at_val = datetime.fromisoformat(row["updated_at"])
+            except ValueError:
+                pass
+
         return cls(
             id=row["id"],
-            session_date=date.fromisoformat(row["session_date"]) if row["session_date"] else date.today(),
-            title=row["title"],
-            content=row["content"],
+            session_date=session_date_val,
+            title=row["title"] or "",
+            content=row["content"] or "",
             campaign=row["campaign"],
             character_id=row["character_id"],
-            tags=json.loads(row["tags"]) if row["tags"] else [],
-            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
-            updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else None,
-            embedding=json.loads(row["embedding"]) if row["embedding"] else None,
+            tags=tags,
+            created_at=created_at_val,
+            updated_at=updated_at_val,
+            embedding=embedding,
         )
 
 
@@ -81,11 +127,20 @@ class SearchResult:
 class EmbeddingEngine:
     """Handles text embedding generation."""
 
-    def __init__(self, provider: EmbeddingProvider = EmbeddingProvider.NONE):
+    # Default model for sentence-transformers (small, fast, ~80MB)
+    DEFAULT_MODEL = "all-MiniLM-L6-v2"
+
+    def __init__(
+        self,
+        provider: EmbeddingProvider = EmbeddingProvider.NONE,
+        show_progress: bool = True,
+    ):
         self.provider = provider
+        self.show_progress = show_progress
         self._model = None
         self._ollama_client = None
         self._dimension = 384  # Default for all-MiniLM-L6-v2
+        self._model_loaded = False
 
     def is_available(self) -> bool:
         """Check if the embedding provider is available."""
@@ -136,31 +191,102 @@ class EmbeddingEngine:
         # Fall back to individual embedding for other providers
         return [self.embed(text) for text in texts]
 
+    def _load_sentence_transformer_model(self) -> bool:
+        """Load the sentence-transformers model with progress indication.
+
+        Returns True if model loaded successfully, False otherwise.
+        """
+        if self._model is not None:
+            return True
+
+        try:
+            from sentence_transformers import SentenceTransformer
+            import sys
+
+            # Check if model needs downloading by looking for cached path
+            model_name = self.DEFAULT_MODEL
+            needs_download = not self._is_model_cached(model_name)
+
+            if needs_download and self.show_progress:
+                print(
+                    f"Downloading embedding model '{model_name}' (~80MB)...",
+                    file=sys.stderr,
+                )
+                print(
+                    "This is a one-time download for semantic search.",
+                    file=sys.stderr,
+                )
+
+            # Load model - sentence-transformers shows its own progress bar
+            self._model = SentenceTransformer(model_name)
+            self._dimension = self._model.get_sentence_embedding_dimension()
+            self._model_loaded = True
+
+            if needs_download and self.show_progress:
+                print(f"Model '{model_name}' ready.", file=sys.stderr)
+
+            return True
+        except Exception as e:
+            if self.show_progress:
+                import sys
+                print(f"Failed to load embedding model: {e}", file=sys.stderr)
+            return False
+
+    def _is_model_cached(self, model_name: str) -> bool:
+        """Check if a sentence-transformers model is already cached."""
+        try:
+            from pathlib import Path
+            import os
+
+            # Check common cache locations
+            cache_dirs = [
+                Path.home() / ".cache" / "torch" / "sentence_transformers",
+                Path.home() / ".cache" / "huggingface" / "hub",
+            ]
+
+            # Also check HF_HOME environment variable
+            hf_home = os.environ.get("HF_HOME")
+            if hf_home:
+                cache_dirs.append(Path(hf_home) / "hub")
+
+            for cache_dir in cache_dirs:
+                if cache_dir.exists():
+                    # Look for model directory
+                    for item in cache_dir.iterdir():
+                        if model_name.replace("/", "_") in item.name or model_name in item.name:
+                            return True
+            return False
+        except (OSError, PermissionError):
+            # If we can't check cache directories, assume not cached
+            return False
+
     def _embed_sentence_transformers(self, text: str) -> Optional[list[float]]:
         """Embed using sentence-transformers."""
         try:
-            if self._model is None:
-                from sentence_transformers import SentenceTransformer
-                # all-MiniLM-L6-v2 is small (80MB) and fast
-                self._model = SentenceTransformer("all-MiniLM-L6-v2")
-                self._dimension = self._model.get_sentence_embedding_dimension()
+            if not self._load_sentence_transformer_model():
+                return None
 
             embedding = self._model.encode(text, convert_to_numpy=True)
             return embedding.tolist()
-        except Exception:
+        except (ImportError, RuntimeError, ValueError, TypeError) as e:
+            # ImportError: sentence-transformers not installed
+            # RuntimeError: model loading/encoding issues
+            # ValueError/TypeError: invalid input
+            import sys
+            print(f"Embedding error: {e}", file=sys.stderr)
             return None
 
     def _embed_batch_sentence_transformers(self, texts: list[str]) -> list[Optional[list[float]]]:
         """Batch embed using sentence-transformers."""
         try:
-            if self._model is None:
-                from sentence_transformers import SentenceTransformer
-                self._model = SentenceTransformer("all-MiniLM-L6-v2")
-                self._dimension = self._model.get_sentence_embedding_dimension()
+            if not self._load_sentence_transformer_model():
+                return [None] * len(texts)
 
             embeddings = self._model.encode(texts, convert_to_numpy=True)
             return [e.tolist() for e in embeddings]
-        except Exception:
+        except (ImportError, RuntimeError, ValueError, TypeError) as e:
+            import sys
+            print(f"Batch embedding error: {e}", file=sys.stderr)
             return [None] * len(texts)
 
     def _embed_ollama(self, text: str) -> Optional[list[float]]:
@@ -179,17 +305,34 @@ class EmbeddingEngine:
             if embedding:
                 self._dimension = len(embedding)
             return embedding if embedding else None
-        except Exception:
+        except ImportError:
+            # Ollama not installed
+            return None
+        except (ConnectionError, TimeoutError, OSError) as e:
+            # Network/connection issues with Ollama server
+            import sys
+            print(f"Ollama connection error: {e}", file=sys.stderr)
+            return None
+        except (ValueError, TypeError, KeyError) as e:
+            # Response parsing issues
+            import sys
+            print(f"Ollama response error: {e}", file=sys.stderr)
             return None
 
 
 class SessionNotesStore:
-    """SQLite-based session notes storage with vector search."""
+    """SQLite-based session notes storage with vector search.
+
+    Supports context manager protocol for proper resource cleanup:
+        with SessionNotesStore() as store:
+            store.add(note)
+    """
 
     def __init__(
         self,
         db_path: Optional[Path] = None,
         embedding_provider: EmbeddingProvider = EmbeddingProvider.NONE,
+        show_progress: bool = True,
     ):
         if db_path is None:
             data_dir = Path(user_data_dir("dnd-manager", "dnd-manager"))
@@ -197,17 +340,39 @@ class SessionNotesStore:
             db_path = data_dir / "session_notes.db"
 
         self.db_path = db_path
-        self.embedding_engine = EmbeddingEngine(embedding_provider)
+        self.embedding_engine = EmbeddingEngine(embedding_provider, show_progress)
         self._conn: Optional[sqlite3.Connection] = None
-        self._init_db()
+        try:
+            self._init_db()
+        except Exception:
+            # Ensure connection is closed if init fails
+            self.close()
+            raise
+
+    def __enter__(self) -> "SessionNotesStore":
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Exit context manager, ensuring connection is closed."""
+        self.close()
+
+    def __del__(self) -> None:
+        """Destructor to ensure connection is closed."""
+        self.close()
 
     def _get_conn(self) -> sqlite3.Connection:
-        """Get database connection."""
+        """Get database connection with proper cleanup on error."""
         if self._conn is None:
-            self._conn = sqlite3.connect(self.db_path)
-            self._conn.row_factory = sqlite3.Row
-            # Enable FTS5 for full-text search
-            self._conn.execute("PRAGMA journal_mode=WAL")
+            conn = sqlite3.connect(self.db_path)
+            try:
+                conn.row_factory = sqlite3.Row
+                # Enable FTS5 for full-text search
+                conn.execute("PRAGMA journal_mode=WAL")
+                self._conn = conn
+            except Exception:
+                conn.close()
+                raise
         return self._conn
 
     def _init_db(self) -> None:
@@ -382,6 +547,10 @@ class SessionNotesStore:
         offset: int = 0,
     ) -> list[SessionNote]:
         """Get all notes with optional filtering."""
+        # Validate limit and offset to prevent DoS
+        limit = max(1, min(limit, 1000))  # Clamp to 1-1000
+        offset = max(0, min(offset, 100000))  # Clamp to 0-100000
+
         conn = self._get_conn()
 
         query = "SELECT * FROM session_notes WHERE 1=1"
@@ -422,32 +591,56 @@ class SessionNotesStore:
         cursor = conn.execute(query, params)
         return [SessionNote.from_row(row) for row in cursor.fetchall()]
 
+    def _sanitize_fts5_query(self, query: str) -> str:
+        """Sanitize user input for FTS5 MATCH to prevent injection and DoS.
+
+        FTS5 has special syntax (AND, OR, NOT, *, quotes, etc.) that could be
+        abused. This escapes the query to treat it as literal text.
+        """
+        if not query or not query.strip():
+            return '""'  # Empty query returns nothing
+
+        # Escape double quotes by doubling them
+        escaped = query.replace('"', '""')
+        # Wrap in quotes to treat as literal phrase
+        return f'"{escaped}"'
+
     def search_text(self, query: str, limit: int = 20) -> list[SearchResult]:
         """Full-text search using FTS5."""
+        # Validate limit
+        limit = max(1, min(limit, 100))
+
+        # Sanitize query to prevent FTS5 injection
+        safe_query = self._sanitize_fts5_query(query)
+
         conn = self._get_conn()
 
-        # Use FTS5 match query
-        cursor = conn.execute(
-            """
-            SELECT session_notes.*, bm25(notes_fts) as score
-            FROM notes_fts
-            JOIN session_notes ON notes_fts.rowid = session_notes.id
-            WHERE notes_fts MATCH ?
-            ORDER BY score
-            LIMIT ?
-            """,
-            (query, limit),
-        )
+        try:
+            cursor = conn.execute(
+                """
+                SELECT session_notes.*, bm25(notes_fts) as score
+                FROM notes_fts
+                JOIN session_notes ON notes_fts.rowid = session_notes.id
+                WHERE notes_fts MATCH ?
+                ORDER BY score
+                LIMIT ?
+                """,
+                (safe_query, limit),
+            )
 
-        results = []
-        for row in cursor.fetchall():
-            note = SessionNote.from_row(row)
-            # BM25 returns negative scores where lower (more negative) is better
-            # Convert to positive score where higher is better
-            score = -row["score"] if row["score"] else 0.0
-            results.append(SearchResult(note=note, score=score, match_type="keyword"))
+            results = []
+            for row in cursor.fetchall():
+                note = SessionNote.from_row(row)
+                # BM25 returns negative scores where lower (more negative) is better
+                # Convert to positive score where higher is better
+                score = -row["score"] if row["score"] else 0.0
+                results.append(SearchResult(note=note, score=score, match_type="keyword"))
 
-        return results
+            return results
+        except sqlite3.OperationalError as e:
+            # Log and return empty results on FTS5 errors
+            logger.warning(f"FTS5 search error: {e}")
+            return []
 
     def search_semantic(self, query: str, limit: int = 20) -> list[SearchResult]:
         """Semantic search using vector similarity."""
@@ -532,13 +725,16 @@ class SessionNotesStore:
     def get_tags(self) -> list[str]:
         """Get list of all unique tags."""
         conn = self._get_conn()
-        cursor = conn.execute("SELECT tags FROM session_notes WHERE tags IS NOT NULL")
+        cursor = conn.execute("SELECT id, tags FROM session_notes WHERE tags IS NOT NULL")
 
         all_tags: set[str] = set()
         for row in cursor.fetchall():
-            if row[0]:
-                tags = json.loads(row[0])
-                all_tags.update(tags)
+            if row[1]:
+                try:
+                    tags = json.loads(row[1])
+                    all_tags.update(tags)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Corrupted tags JSON in note {row[0]}: {e}")
 
         return sorted(all_tags)
 
@@ -596,17 +792,42 @@ class SessionNotesStore:
         return stats
 
 
-# Global instance
+# Global instance with thread-safe initialization
 _notes_store: Optional[SessionNotesStore] = None
+_notes_store_lock = threading.Lock()
+
+
+def _cleanup_notes_store() -> None:
+    """Cleanup function called at exit to close database connection (thread-safe)."""
+    global _notes_store
+    with _notes_store_lock:
+        if _notes_store is not None:
+            _notes_store.close()
+            _notes_store = None
+
+
+# Register cleanup handler
+atexit.register(_cleanup_notes_store)
 
 
 def get_notes_store(
     embedding_provider: Optional[EmbeddingProvider] = None,
+    show_progress: bool = True,
 ) -> SessionNotesStore:
-    """Get the global session notes store."""
+    """Get the global session notes store (thread-safe).
+
+    Args:
+        embedding_provider: Which provider to use for embeddings. If None,
+            will auto-detect available providers.
+        show_progress: If True, show progress messages during model downloads.
+    """
     global _notes_store
 
-    if _notes_store is None:
+    # Use lock for all access to ensure thread safety with cleanup
+    with _notes_store_lock:
+        if _notes_store is not None:
+            return _notes_store
+
         # Try to detect available embedding provider
         if embedding_provider is None:
             # Check for sentence-transformers first (preferred)
@@ -621,6 +842,9 @@ def get_notes_store(
                 except ImportError:
                     embedding_provider = EmbeddingProvider.NONE
 
-        _notes_store = SessionNotesStore(embedding_provider=embedding_provider)
+        _notes_store = SessionNotesStore(
+            embedding_provider=embedding_provider,
+            show_progress=show_progress,
+        )
 
-    return _notes_store
+        return _notes_store

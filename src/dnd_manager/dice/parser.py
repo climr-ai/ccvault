@@ -6,6 +6,26 @@ from enum import Enum
 from typing import Optional
 
 
+class DiceParserError(ValueError):
+    """Raised when dice notation parsing fails."""
+
+    pass
+
+
+class DiceLimitError(DiceParserError):
+    """Raised when dice values exceed safety limits."""
+
+    pass
+
+
+# Safety limits to prevent resource exhaustion
+MAX_DICE_COUNT = 100  # Maximum number of dice in a single group
+MAX_DICE_SIDES = 1000  # Maximum sides on a die
+MAX_FLAT_MODIFIER = 10000  # Maximum flat modifier (+/-)
+MAX_MULTIPLIER = 10  # Maximum multiplier for crits
+MAX_MODIFIER_VALUE = 100  # Maximum modifier value (e.g., keep highest N)
+
+
 class DiceModifier(str, Enum):
     """Modifiers that can be applied to dice rolls."""
 
@@ -117,6 +137,10 @@ def parse_dice_notation(notation: str) -> DiceExpression:
         mult_match = re.search(r"\)\*(\d+)", notation)
         if mult_match:
             multiplier = int(mult_match.group(1))
+            if multiplier > MAX_MULTIPLIER:
+                raise DiceLimitError(
+                    f"Multiplier {multiplier} exceeds maximum of {MAX_MULTIPLIER}"
+                )
             # Remove the multiplier wrapper
             notation = re.sub(r"^\(", "", notation)
             notation = re.sub(r"\)\*\d+$", "", notation)
@@ -132,10 +156,30 @@ def parse_dice_notation(notation: str) -> DiceExpression:
         between = notation[last_end : match.start()]
         for mod_match in MODIFIER_PATTERN.finditer(between):
             sign = 1 if mod_match.group(1) == "+" else -1
-            expression.flat_modifier += sign * int(mod_match.group(2))
+            mod_value = int(mod_match.group(2))
+            if mod_value > MAX_FLAT_MODIFIER:
+                raise DiceLimitError(
+                    f"Flat modifier {mod_value} exceeds maximum of {MAX_FLAT_MODIFIER}"
+                )
+            expression.flat_modifier += sign * mod_value
 
         count = int(match.group(1)) if match.group(1) else 1
         sides = int(match.group(2))
+
+        # Validate dice count and sides
+        if count > MAX_DICE_COUNT:
+            raise DiceLimitError(
+                f"Dice count {count} exceeds maximum of {MAX_DICE_COUNT}"
+            )
+        if count < 1:
+            raise DiceParserError(f"Dice count must be at least 1, got {count}")
+        if sides > MAX_DICE_SIDES:
+            raise DiceLimitError(
+                f"Dice sides {sides} exceeds maximum of {MAX_DICE_SIDES}"
+            )
+        if sides < 1:
+            raise DiceParserError(f"Dice must have at least 1 side, got {sides}")
+
         modifier = None
         modifier_value = None
 
@@ -158,6 +202,10 @@ def parse_dice_notation(notation: str) -> DiceExpression:
 
             if match.group(4):
                 modifier_value = int(match.group(4))
+                if modifier_value > MAX_MODIFIER_VALUE:
+                    raise DiceLimitError(
+                        f"Modifier value {modifier_value} exceeds maximum of {MAX_MODIFIER_VALUE}"
+                    )
             elif modifier in (DiceModifier.KEEP_HIGHEST, DiceModifier.KEEP_LOWEST,
                             DiceModifier.DROP_HIGHEST, DiceModifier.DROP_LOWEST):
                 modifier_value = 1  # Default to 1 for keep/drop
@@ -171,7 +219,12 @@ def parse_dice_notation(notation: str) -> DiceExpression:
     remaining = notation[last_end:]
     for mod_match in MODIFIER_PATTERN.finditer(remaining):
         sign = 1 if mod_match.group(1) == "+" else -1
-        expression.flat_modifier += sign * int(mod_match.group(2))
+        mod_value = int(mod_match.group(2))
+        if mod_value > MAX_FLAT_MODIFIER:
+            raise DiceLimitError(
+                f"Flat modifier {mod_value} exceeds maximum of {MAX_FLAT_MODIFIER}"
+            )
+        expression.flat_modifier += sign * mod_value
 
     # Detect advantage/disadvantage from expression
     if len(expression.groups) == 1:
@@ -186,9 +239,14 @@ def parse_dice_notation(notation: str) -> DiceExpression:
 
 
 def is_valid_dice_notation(notation: str) -> bool:
-    """Check if a string is valid dice notation."""
+    """Check if a string is valid dice notation.
+
+    Returns True only if the notation is both syntactically valid and within
+    safety limits. Returns False for invalid syntax, limit violations, or
+    empty expressions.
+    """
     try:
         expr = parse_dice_notation(notation)
         return len(expr.groups) > 0
-    except Exception:
+    except (DiceParserError, ValueError, TypeError):
         return False

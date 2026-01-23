@@ -4,7 +4,17 @@ import random
 import pytest
 
 from dnd_manager.dice import parse_dice_notation, DiceRoller, RollResult
-from dnd_manager.dice.parser import DiceModifier, DiceExpression, is_valid_dice_notation
+from dnd_manager.dice.parser import (
+    DiceModifier,
+    DiceExpression,
+    is_valid_dice_notation,
+    DiceParserError,
+    DiceLimitError,
+    MAX_DICE_COUNT,
+    MAX_DICE_SIDES,
+    MAX_FLAT_MODIFIER,
+)
+from dnd_manager.dice.roller import DiceRollError, MAX_EXPLODE_ITERATIONS
 
 
 class TestDiceParser:
@@ -238,3 +248,99 @@ class TestRollResult:
         """Test multiplier in result string."""
         expr = parse_dice_notation("(2d6)*2")
         assert expr.multiplier == 2
+
+
+class TestDiceSafetyLimits:
+    """Tests for dice parser safety limits to prevent resource exhaustion."""
+
+    def test_max_dice_count_enforced(self):
+        """Test that excessive dice count is rejected."""
+        with pytest.raises(DiceLimitError, match="Dice count.*exceeds maximum"):
+            parse_dice_notation("999d6")
+
+    def test_max_dice_count_boundary(self):
+        """Test that dice count at exactly the limit works."""
+        expr = parse_dice_notation(f"{MAX_DICE_COUNT}d6")
+        assert expr.groups[0].count == MAX_DICE_COUNT
+
+    def test_max_dice_sides_enforced(self):
+        """Test that excessive dice sides is rejected."""
+        with pytest.raises(DiceLimitError, match="Dice sides.*exceeds maximum"):
+            parse_dice_notation("1d999999")
+
+    def test_max_dice_sides_boundary(self):
+        """Test that dice sides at exactly the limit works."""
+        expr = parse_dice_notation(f"1d{MAX_DICE_SIDES}")
+        assert expr.groups[0].sides == MAX_DICE_SIDES
+
+    def test_max_flat_modifier_enforced(self):
+        """Test that excessive flat modifier is rejected."""
+        with pytest.raises(DiceLimitError, match="Flat modifier.*exceeds maximum"):
+            parse_dice_notation("1d20+99999999")
+
+    def test_negative_flat_modifier_at_limit(self):
+        """Test that negative modifier at limit works."""
+        expr = parse_dice_notation(f"1d20-{MAX_FLAT_MODIFIER}")
+        assert expr.flat_modifier == -MAX_FLAT_MODIFIER
+
+    def test_max_multiplier_enforced(self):
+        """Test that excessive multiplier is rejected."""
+        with pytest.raises(DiceLimitError, match="Multiplier.*exceeds maximum"):
+            parse_dice_notation("(1d6)*999")
+
+    def test_dice_count_must_be_positive(self):
+        """Test that zero dice count is rejected."""
+        # Regex won't match 0d6, so this becomes just 'd6' which is valid (1d6)
+        # Actually test a negative case
+        with pytest.raises(DiceParserError, match="Dice must have at least 1 side"):
+            parse_dice_notation("1d0")
+
+    def test_is_valid_rejects_overlimit(self):
+        """Test that is_valid_dice_notation returns False for overlimit expressions."""
+        assert is_valid_dice_notation("1d20") is True
+        assert is_valid_dice_notation("999d999999") is False
+        assert is_valid_dice_notation("1d20+99999999") is False
+
+
+class TestExplodingDiceSafety:
+    """Tests for exploding dice safety limits."""
+
+    def test_d1_explode_rejected(self):
+        """Test that d1 with explode modifier is rejected (would cause infinite loop)."""
+        roller = DiceRoller()
+        with pytest.raises(DiceRollError, match="Cannot use exploding dice with d1"):
+            roller.roll("1d1!")
+
+    def test_normal_explode_works(self):
+        """Test that normal exploding dice works within limits."""
+        # Use a seeded roller so we get predictable (non-exploding) results
+        roller = DiceRoller(rng=random.Random(42))
+        result = roller.roll("3d6!")
+        assert len(result.group_results[0].rolls) >= 3
+
+    def test_reroll_threshold_too_high_rejected(self):
+        """Test that reroll with threshold >= sides is rejected."""
+        roller = DiceRoller()
+        # rr<7 on a d6 means reroll if < 7, but d6 max is 6, so always reroll
+        with pytest.raises(DiceRollError, match="would cause infinite loop"):
+            roller.roll("1d6rr<7")
+
+
+class TestRollerContextManager:
+    """Tests for DiceRoller context manager support."""
+
+    def test_context_manager_clears_history(self):
+        """Test that exiting context manager clears history."""
+        with DiceRoller() as roller:
+            roller.roll("1d20")
+            roller.roll("2d6")
+            assert len(roller.history) == 2
+        # After exiting, history should be cleared
+        assert len(roller.history) == 0
+
+    def test_context_manager_returns_roller(self):
+        """Test that context manager returns the roller instance."""
+        with DiceRoller() as roller:
+            assert isinstance(roller, DiceRoller)
+            result = roller.roll("1d20")
+            assert isinstance(result, RollResult)

@@ -104,9 +104,18 @@ class PDFExporter:
 
         html_content = self.render_html(character)
 
-        # Create PDF
+        # Create PDF with proper cleanup on failure
         html = HTML(string=html_content)
-        html.write_pdf(output_path)
+        try:
+            html.write_pdf(output_path)
+        except Exception:
+            # Clean up partial file if write failed
+            if output_path.exists():
+                try:
+                    output_path.unlink()
+                except OSError:
+                    pass
+            raise
 
         return output_path
 

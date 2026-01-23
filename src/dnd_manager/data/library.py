@@ -9,6 +9,7 @@ NOTE: Cloud sync with CLIMR servers is PLANNED but not yet implemented.
 All content is stored and shared locally only at this time.
 """
 
+import logging
 import sqlite3
 import json
 import hashlib
@@ -20,6 +21,8 @@ from typing import Optional, Any
 from enum import Enum
 
 from platformdirs import user_data_dir
+
+logger = logging.getLogger(__name__)
 
 
 class ContentType(Enum):
@@ -33,6 +36,7 @@ class ContentType(Enum):
     BACKGROUND = "background"
     MONSTER = "monster"
     ITEM = "item"
+    OTHER = "other"  # Fallback for unknown types
 
 
 class ContentStatus(Enum):
@@ -41,6 +45,7 @@ class ContentStatus(Enum):
     PUBLISHED = "published"  # Available in library
     ARCHIVED = "archived"  # Hidden from search
     FEATURED = "featured"  # Promoted content
+    LOCAL = "local"  # Local-only content not synced
 
 
 @dataclass
@@ -150,50 +155,146 @@ class LibraryContent:
 
     @classmethod
     def from_dict(cls, data: dict) -> "LibraryContent":
+        """Create from dictionary with safe parsing of enums and dates."""
+        # Safely parse enums
+        try:
+            content_type = ContentType(data.get("content_type", "spell"))
+        except ValueError:
+            logger.warning(f"Invalid content_type: {data.get('content_type')}, using OTHER")
+            content_type = ContentType.OTHER
+
+        try:
+            status = ContentStatus(data.get("status", "draft"))
+        except ValueError:
+            logger.warning(f"Invalid status: {data.get('status')}, using LOCAL")
+            status = ContentStatus.LOCAL
+
+        # Safely parse dates
+        created_at: Optional[datetime] = None
+        if data.get("created_at"):
+            try:
+                created_at = datetime.fromisoformat(data["created_at"])
+            except ValueError:
+                logger.warning(f"Invalid created_at date: {data.get('created_at')}")
+
+        updated_at: Optional[datetime] = None
+        if data.get("updated_at"):
+            try:
+                updated_at = datetime.fromisoformat(data["updated_at"])
+            except ValueError:
+                logger.warning(f"Invalid updated_at date: {data.get('updated_at')}")
+
+        synced_at: Optional[datetime] = None
+        if data.get("synced_at"):
+            try:
+                synced_at = datetime.fromisoformat(data["synced_at"])
+            except ValueError:
+                logger.warning(f"Invalid synced_at date: {data.get('synced_at')}")
+
         return cls(
             id=data.get("id", ""),
-            content_type=ContentType(data.get("content_type", "spell")),
+            content_type=content_type,
             name=data.get("name", ""),
             description=data.get("description", ""),
             content_data=data.get("content_data", {}),
             tags=data.get("tags", []),
             ruleset=data.get("ruleset", "dnd2024"),
             author=LibraryAuthor.from_dict(data.get("author", {})),
-            status=ContentStatus(data.get("status", "draft")),
+            status=status,
             rating=ContentRating.from_dict(data.get("rating", {})),
             downloads=data.get("downloads", 0),
             version=data.get("version", "1.0.0"),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None,
-            updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else None,
-            synced_at=datetime.fromisoformat(data["synced_at"]) if data.get("synced_at") else None,
+            created_at=created_at,
+            updated_at=updated_at,
+            synced_at=synced_at,
             local_only=data.get("local_only", True),
             checksum=data.get("checksum", ""),
         )
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "LibraryContent":
-        """Create from database row."""
+        """Create from database row.
+
+        Handles corrupted JSON fields gracefully by returning defaults.
+        """
+        # Safely parse JSON fields with logging
+        content_data: dict = {}
+        if row["content_data"]:
+            try:
+                content_data = json.loads(row["content_data"])
+            except json.JSONDecodeError as e:
+                logger.warning(f"Corrupted content_data JSON in row {row['id']}: {e}")
+
+        tags: list[str] = []
+        if row["tags"]:
+            try:
+                tags = json.loads(row["tags"])
+            except json.JSONDecodeError as e:
+                logger.warning(f"Corrupted tags JSON in row {row['id']}: {e}")
+
+        author = LibraryAuthor(id="", name="Anonymous")
+        if row["author"]:
+            try:
+                author = LibraryAuthor.from_dict(json.loads(row["author"]))
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                logger.warning(f"Corrupted author data in row {row['id']}: {e}")
+
+        # Safely parse dates with logging
+        created_at: Optional[datetime] = None
+        if row["created_at"]:
+            try:
+                created_at = datetime.fromisoformat(row["created_at"])
+            except ValueError as e:
+                logger.warning(f"Invalid created_at in row {row['id']}: {e}")
+
+        updated_at: Optional[datetime] = None
+        if row["updated_at"]:
+            try:
+                updated_at = datetime.fromisoformat(row["updated_at"])
+            except ValueError as e:
+                logger.warning(f"Invalid updated_at in row {row['id']}: {e}")
+
+        synced_at: Optional[datetime] = None
+        if row["synced_at"]:
+            try:
+                synced_at = datetime.fromisoformat(row["synced_at"])
+            except ValueError as e:
+                logger.warning(f"Invalid synced_at in row {row['id']}: {e}")
+
+        # Safely parse enums with logging
+        try:
+            content_type = ContentType(row["content_type"])
+        except ValueError:
+            logger.warning(f"Invalid content_type '{row['content_type']}' in row {row['id']}, using OTHER")
+            content_type = ContentType.OTHER
+
+        try:
+            status = ContentStatus(row["status"])
+        except ValueError:
+            logger.warning(f"Invalid status '{row['status']}' in row {row['id']}, using LOCAL")
+            status = ContentStatus.LOCAL
+
         return cls(
             id=row["id"],
-            content_type=ContentType(row["content_type"]),
-            name=row["name"],
-            description=row["description"],
-            content_data=json.loads(row["content_data"]) if row["content_data"] else {},
-            tags=json.loads(row["tags"]) if row["tags"] else [],
-            ruleset=row["ruleset"],
-            author=LibraryAuthor.from_dict(json.loads(row["author"])) if row["author"] else LibraryAuthor(id="", name="Anonymous"),
-            status=ContentStatus(row["status"]),
+            content_type=content_type,
+            name=row["name"] or "Unnamed",
+            description=row["description"] or "",
+            content_data=content_data,
+            tags=tags,
+            ruleset=row["ruleset"] or "dnd2024",
+            author=author,
+            status=status,
             rating=ContentRating(
-                average=row["rating_avg"],
-                count=row["rating_count"],
+                average=row["rating_avg"] or 0.0,
+                count=row["rating_count"] or 0,
             ),
-            downloads=row["downloads"],
-            version=row["version"],
-            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
-            updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else None,
-            synced_at=datetime.fromisoformat(row["synced_at"]) if row["synced_at"] else None,
+            downloads=row["downloads"] or 0,
+            version=row["version"] or "1.0.0",
+            created_at=created_at,
+            updated_at=updated_at,
+            synced_at=synced_at,
             local_only=bool(row["local_only"]),
-            checksum=row["checksum"],
+            checksum=row["checksum"] or "",
         )
 
 
@@ -218,14 +319,41 @@ class HomebrewLibrary:
         self.db_path = db_path
         self._conn: Optional[sqlite3.Connection] = None
         self._user_id: Optional[str] = None
-        self._init_db()
+        try:
+            self._init_db()
+        except Exception:
+            self.close()
+            raise
+
+    def __enter__(self) -> "HomebrewLibrary":
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit context manager, ensuring connection is closed."""
+        self.close()
+
+    def __del__(self) -> None:
+        """Destructor to ensure connection is closed."""
+        self.close()
+
+    def close(self) -> None:
+        """Close database connection."""
+        if self._conn:
+            self._conn.close()
+            self._conn = None
 
     def _get_conn(self) -> sqlite3.Connection:
-        """Get database connection."""
+        """Get database connection with proper cleanup on error."""
         if self._conn is None:
-            self._conn = sqlite3.connect(self.db_path)
-            self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA journal_mode=WAL")
+            conn = sqlite3.connect(self.db_path)
+            try:
+                conn.row_factory = sqlite3.Row
+                conn.execute("PRAGMA journal_mode=WAL")
+                self._conn = conn
+            except Exception:
+                conn.close()
+                raise
         return self._conn
 
     def _init_db(self) -> None:
@@ -513,6 +641,9 @@ class HomebrewLibrary:
 
     def search(self, query: str, limit: int = 20) -> list[LibraryContent]:
         """Full-text search library content."""
+        # Validate limit to prevent DoS
+        limit = max(1, min(limit, 100))
+
         conn = self._get_conn()
 
         cursor = conn.execute(
@@ -756,8 +887,12 @@ class HomebrewLibrary:
         all_tags: set[str] = set()
         for row in cursor.fetchall():
             if row[0]:
-                tags = json.loads(row[0])
-                all_tags.update(tags)
+                try:
+                    tags = json.loads(row[0])
+                    if isinstance(tags, list):
+                        all_tags.update(tags)
+                except json.JSONDecodeError:
+                    pass  # Skip corrupted JSON
 
         return sorted(all_tags)
 

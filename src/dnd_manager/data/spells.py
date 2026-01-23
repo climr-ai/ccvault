@@ -6,6 +6,27 @@ which are available under the Open Gaming License.
 Spells default to 2024 rules. Use the `variants` field for ruleset-specific
 overrides (e.g., 2014 rules). Call `for_ruleset()` to get the spell with
 the appropriate variant applied.
+
+Note: This file is intentionally large (~7,500 lines) to keep all spell data
+in one place with Python dataclass definitions. This approach provides:
+- IDE type checking and autocomplete support
+- Fast import (no runtime JSON/YAML parsing)
+- Dataclass methods available directly on spell instances
+- Single source of truth for spell data
+
+Structure:
+- Lines 1-160: Dataclass definitions (Spell, SpellVariant)
+- Lines 160-970: Cantrips (CANTRIPS list)
+- Lines 970-2080: 1st Level Spells
+- Lines 2080-3290: 2nd Level Spells
+- Lines 3290-4300: 3rd Level Spells
+- Lines 4300-5030: 4th Level Spells
+- Lines 5030-5940: 5th Level Spells
+- Lines 5940-6630: 6th Level Spells
+- Lines 6630-6970: 7th Level Spells
+- Lines 6970-7270: 8th Level Spells
+- Lines 7270-7560: 9th Level Spells
+- Lines 7560+: Helper functions
 """
 
 import re

@@ -635,7 +635,8 @@ def cmd_ask(
         )
 
         print(f"D&D Assistant with Tools ({provider})")
-        print(f"Character: {character.name} (Level {character.total_level} {character.primary_class.name})")
+        class_name = character.primary_class.name if character.primary_class else "Unknown"
+        print(f"Character: {character.name} (Level {character.total_level} {class_name})")
         print("Tool mode: AI can modify your character")
         print("Commands: 'quit' to exit, 'clear' to reset, 'refresh' to reload character")
         print("-" * 50)
@@ -702,9 +703,12 @@ def cmd_show(name: str) -> int:
     print()
 
     # Class info
-    class_info = f"Level {c.total_level} {c.primary_class.name}"
-    if c.primary_class.subclass:
-        class_info += f" ({c.primary_class.subclass})"
+    if c.primary_class:
+        class_info = f"Level {c.total_level} {c.primary_class.name}"
+        if c.primary_class.subclass:
+            class_info += f" ({c.primary_class.subclass})"
+    else:
+        class_info = f"Level {c.total_level} (No class)"
     print(f"Class: {class_info}")
 
     if c.species:

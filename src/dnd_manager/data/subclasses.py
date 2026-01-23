@@ -2,6 +2,10 @@
 
 Contains SRD subclasses (one per class) with original flavor text
 and accurate mechanics.
+
+Note: This file is large (~4,600 lines) to keep all subclass data with Python
+dataclass definitions. This provides IDE type checking, fast imports without
+runtime parsing, and dataclass methods on subclass instances.
 """
 
 from dataclasses import dataclass, field

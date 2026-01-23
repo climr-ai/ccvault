@@ -7,6 +7,10 @@ Ruleset differences:
 - D&D 2014: Fixed ability score bonuses per species
 - D&D 2024: Flexible ability scores (+2/+1 or +1/+1/+1 to any)
 - ToV: Lineage + Heritage system (lineage gives traits, heritage gives skills/languages)
+
+Note: This file is large (~2,900 lines) to keep all species data with Python
+dataclass definitions. This provides IDE type checking, fast imports without
+runtime parsing, and dataclass methods on species instances.
 """
 
 from dataclasses import dataclass, field

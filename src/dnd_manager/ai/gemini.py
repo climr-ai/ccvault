@@ -300,10 +300,10 @@ class GeminiProvider(AIProvider):
                     text_content += part.text
                 elif hasattr(part, "function_call") and part.function_call:
                     fc = part.function_call
-                    # Generate a unique ID for the tool use
+                    # Generate a unique ID for the tool use (full UUID for collision safety)
                     import uuid
                     tool_use_blocks.append(ToolUseBlock(
-                        id=f"toolu_{uuid.uuid4().hex[:24]}",
+                        id=f"toolu_{uuid.uuid4().hex}",
                         name=fc.name,
                         input=dict(fc.args) if fc.args else {},
                     ))

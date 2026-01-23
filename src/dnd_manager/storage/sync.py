@@ -10,6 +10,7 @@ Status: PLANNED FEATURE - Not yet implemented
 See: https://github.com/jaredgiosinuff/dnd-manager/issues (for feature requests)
 """
 
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
@@ -247,13 +248,16 @@ class SyncManager:
         self._sync_queue.clear()
 
 
-# Global sync manager instance
+# Global sync manager instance with thread-safe initialization
 _sync_manager: Optional[SyncManager] = None
+_sync_manager_lock = threading.Lock()
 
 
 def get_sync_manager() -> SyncManager:
-    """Get the global sync manager instance."""
+    """Get the global sync manager instance (thread-safe)."""
     global _sync_manager
-    if _sync_manager is None:
-        _sync_manager = SyncManager()
-    return _sync_manager
+
+    with _sync_manager_lock:
+        if _sync_manager is None:
+            _sync_manager = SyncManager()
+        return _sync_manager

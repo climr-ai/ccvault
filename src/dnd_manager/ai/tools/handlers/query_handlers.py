@@ -93,17 +93,20 @@ async def get_ability_scores(character: Character) -> dict[str, Any]:
 async def get_spell_slots(character: Character) -> dict[str, Any]:
     """Get current spell slot availability."""
     slots = {}
-    for level, slot in character.spellcasting.slots.items():
+    spell_slots = character.spellcasting.slots if character.spellcasting and character.spellcasting.slots else {}
+    for level, slot in spell_slots.items():
         slots[f"level_{level}"] = {
             "total": slot.total,
             "used": slot.used,
             "remaining": slot.remaining,
         }
 
+    has_spellcasting = character.spellcasting and character.spellcasting.ability is not None
+
     return {
         "data": {
             "slots": slots,
-            "has_spellcasting": character.spellcasting.ability is not None,
+            "has_spellcasting": has_spellcasting,
         },
         "changes": [],
     }
@@ -115,7 +118,7 @@ async def get_inventory(
     filter_attuned: bool = False,
 ) -> dict[str, Any]:
     """Get character inventory."""
-    items = character.equipment.items
+    items = character.equipment.items if character.equipment and character.equipment.items else []
 
     if filter_equipped:
         items = [i for i in items if i.equipped]

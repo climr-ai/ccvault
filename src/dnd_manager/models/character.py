@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from dnd_manager.models.abilities import (
     Ability,
@@ -555,6 +555,21 @@ class Character(BaseModel):
 
     # Stat bonuses from various sources (magic items, spells, etc.)
     stat_bonuses: list[StatBonus] = Field(default_factory=list)
+
+    # Maximum character level (D&D 5e cap)
+    MAX_LEVEL: int = 20
+
+    @model_validator(mode="after")
+    def validate_total_level(self) -> "Character":
+        """Ensure total level across all classes doesn't exceed maximum."""
+        total = self.primary_class.level + sum(c.level for c in self.multiclass)
+        if total > self.MAX_LEVEL:
+            raise ValueError(
+                f"Total character level ({total}) exceeds maximum of {self.MAX_LEVEL}. "
+                f"Primary class: {self.primary_class.name} level {self.primary_class.level}, "
+                f"Multiclass levels: {sum(c.level for c in self.multiclass)}"
+            )
+        return self
 
     @computed_field
     @property
