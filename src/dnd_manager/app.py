@@ -3,9 +3,13 @@
 import asyncio
 from datetime import date
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
+
+if TYPE_CHECKING:
+    from dnd_manager.data.items import Weapon
 
 from textual.app import App, ComposeResult
+from textual.css.query import NoMatches
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Header, Footer, Static, Button, Label, Input, RichLog, OptionList
@@ -15,7 +19,7 @@ from textual.message import Message
 from rich.text import Text
 
 from dnd_manager.config import Config, get_config_manager
-from dnd_manager.models.character import Character, RulesetId, Feature
+from dnd_manager.models.character import Character, RulesetId, Feature, Alignment
 from dnd_manager.storage import CharacterStore
 from dnd_manager.data import (
     get_all_species_names,
@@ -30,8 +34,88 @@ from dnd_manager.data import (
     get_skill_description,
     species_grants_feat,
     skill_name_to_enum,
+    get_weapon_mastery_for_weapon,
+    get_weapon_mastery_summary,
 )
 from dnd_manager.data.backgrounds import get_origin_feat_for_background
+
+
+def apply_item_order(
+    items: list[Any], order: Optional[list[str]], key_fn: Callable[[Any], str]
+) -> list[Any]:
+    """Return items ordered by a saved name list, keeping unknown items at the end.
+
+    Args:
+        items: List of items to order.
+        order: List of names defining the desired order. Items matching these names
+            appear first, in the order specified.
+        key_fn: Function to extract the name/key from an item for ordering.
+
+    Returns:
+        New list with items ordered by the name list, unknown items at the end.
+    """
+    if not order:
+        return list(items)
+
+    # Build a dict mapping names to lists of matching items - O(n)
+    order_set = set(order)
+    items_by_name: dict[str, list[Any]] = {name: [] for name in order}
+    unordered: list[Any] = []
+
+    for item in items:
+        key = key_fn(item)
+        if key in order_set:
+            items_by_name[key].append(item)
+        else:
+            unordered.append(item)
+
+    # Flatten ordered items followed by unordered - O(n)
+    result: list[Any] = []
+    for name in order:
+        result.extend(items_by_name[name])
+    result.extend(unordered)
+    return result
+
+
+def _has_weapon_category_proficiency(proficiencies: list[str], category: str) -> bool:
+    """Check if proficiencies include a weapon category (e.g., 'Simple', 'Martial').
+
+    Handles both exact matches ('Simple') and prefix matches ('Simple Weapons').
+    """
+    return category in proficiencies or any(p.startswith(category) for p in proficiencies)
+
+
+def is_weapon_proficient(character: Character, weapon: "Weapon") -> bool:
+    """Determine if a character is proficient with a specific weapon.
+
+    Args:
+        character: The character to check proficiency for.
+        weapon: The weapon to check proficiency with.
+
+    Returns:
+        True if the character is proficient with the weapon.
+    """
+    profs = character.proficiencies.weapons
+
+    # Direct proficiency checks
+    if "All" in profs or weapon.name in profs:
+        return True
+
+    # Check category proficiency (Simple/Martial)
+    weapon_category = weapon.category.split()[0]  # Get "Simple" or "Martial"
+    has_category_prof = _has_weapon_category_proficiency(profs, weapon_category)
+
+    # D&D 2024 Rogue special rule: only proficient with Finesse or Light weapons
+    if character.meta.ruleset == RulesetId.DND_2024 and character.primary_class.name == "Rogue":
+        has_any_weapon_prof = (
+            _has_weapon_category_proficiency(profs, "Simple")
+            or _has_weapon_category_proficiency(profs, "Martial")
+        )
+        if has_any_weapon_prof:
+            is_finesse_or_light = "Finesse" in weapon.properties or "Light" in weapon.properties
+            return is_finesse_or_light
+
+    return has_category_prof
 
 
 # Screen Context Protocol for AI overlay
@@ -66,6 +150,11 @@ POINT_BUY_MAX = 15
 ABILITIES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
 ABILITY_ABBREV = {"strength": "STR", "dexterity": "DEX", "constitution": "CON",
                   "intelligence": "INT", "wisdom": "WIS", "charisma": "CHA"}
+RULESET_LABELS = {
+    "dnd2024": "D&D 2024 (5.5e)",
+    "dnd2014": "D&D 2014 (5e)",
+    "tov": "Tales of the Valiant",
+}
 
 
 class ClickableListItem(Static):
@@ -77,13 +166,23 @@ class ClickableListItem(Static):
             self.index = index
             super().__init__()
 
+    class Activated(Message):
+        """Message sent when this item is activated (double-click)."""
+        bubble = True
+
+        def __init__(self, index: int) -> None:
+            self.index = index
+            super().__init__()
+
     def __init__(self, content: str, index: int, **kwargs) -> None:
         super().__init__(content, **kwargs)
         self.item_index = index
 
-    def on_click(self) -> None:
+    def on_click(self, event) -> None:
         """Handle click by posting a Selected message."""
         self.post_message(self.Selected(self.item_index))
+        if getattr(event, "chain", 1) >= 2:
+            self.post_message(self.Activated(self.item_index))
 
 
 class CreationOptionList(OptionList):
@@ -111,7 +210,7 @@ class CreationOptionList(OptionList):
                     screen._clear_spells()
                     event.prevent_default()
                     return
-        super().on_key(event)
+        # Let OptionList handle all other keys (navigation, etc.)
 
 
 class ListNavigationMixin:
@@ -168,7 +267,8 @@ class ListNavigationMixin:
                 selected_widget = widgets[self.selected_index]
                 # Center the selected item in the viewport
                 container.scroll_to_center(selected_widget, animate=False)
-        except Exception:
+        except NoMatches:
+            # Widget not found - screen may not be fully mounted
             pass
 
     def _navigate_up(self) -> None:
@@ -249,7 +349,21 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         self._last_letter_index: int = -1
         self._last_key: str = ""
         # Dynamic steps - subspecies, species_feat, and origin_feat may be skipped
-        self.all_steps = ["ruleset", "name", "class", "species", "subspecies", "species_feat", "background", "origin_feat", "abilities", "skills", "spells", "confirm"]
+        self.all_steps = [
+            "ruleset",
+            "name",
+            "class",
+            "species",
+            "subspecies",
+            "species_feat",
+            "background",
+            "alignment",
+            "origin_feat",
+            "abilities",
+            "skills",
+            "spells",
+            "confirm",
+        ]
 
         # Get defaults from config
         config = get_config_manager().config
@@ -277,6 +391,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                 "subspecies": draft_data.get("subspecies"),
                 "species_feat": draft_data.get("species_feat"),
                 "background": draft_data.get("background", defaults.background),
+                "alignment": draft_data.get("alignment", Alignment.TRUE_NEUTRAL.value),
                 "origin_feat": draft_data.get("origin_feat"),
                 "ruleset": draft_data.get("ruleset", defaults.ruleset),
                 "skills": draft_data.get("skills", []),
@@ -306,6 +421,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                 "subspecies": None,
                 "species_feat": None,
                 "background": defaults.background,
+                "alignment": Alignment.TRUE_NEUTRAL.value,
                 "origin_feat": None,
                 "ruleset": defaults.ruleset,
                 "skills": [],
@@ -382,6 +498,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             "subspecies": "Selecting subspecies",
             "species_feat": "Selecting species feat",
             "background": "Selecting background",
+            "alignment": "Selecting alignment",
             "origin_feat": "Selecting origin feat",
             "abilities": "Assigning ability scores",
             "skills": "Selecting skill proficiencies",
@@ -409,7 +526,8 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                     "class": char_data.get("class"),
                     "species": char_data.get("species"),
                     "subspecies": char_data.get("subspecies"),
-                    "background": char_data.get("background"),
+            "background": char_data.get("background"),
+            "alignment": char_data.get("alignment"),
                     "selected_skills": getattr(self, "selected_skills", []),
                 },
             },
@@ -453,7 +571,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         # Set default focus to the options list
         try:
             self.query_one("#options-list", OptionList).focus()
-        except Exception:
+        except NoMatches:
             pass
 
     def _show_step(self) -> None:
@@ -475,6 +593,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             "subspecies": "Subspecies",
             "species_feat": "Bonus Feat",
             "background": "Background",
+            "alignment": "Alignment",
             "origin_feat": "Origin Feat",
             "abilities": "Abilities",
             "skills": "Skills",
@@ -565,6 +684,20 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             self.current_options = get_all_background_names()
             self._refresh_options()
 
+        elif step_name == "alignment":
+            title.update("CHOOSE ALIGNMENT")
+            description.update("Select your character's alignment")
+            self.current_options = [a.display_name for a in Alignment]
+            current_alignment = self.char_data.get("alignment")
+            if current_alignment:
+                try:
+                    current_display = Alignment(current_alignment).display_name
+                    if current_display in self.current_options:
+                        self.selected_option = self.current_options.index(current_display)
+                except ValueError:
+                    pass  # Invalid alignment value stored
+            self._refresh_options()
+
         elif step_name == "origin_feat":
             title.update("ORIGIN FEAT")
             # Get the specific origin feat for the selected background
@@ -599,7 +732,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         """Rebuild the options list. Only call on step transitions, not navigation."""
         try:
             options_list = self.query_one("#options-list", OptionList)
-        except Exception:
+        except NoMatches:
             # Screen not mounted yet
             return
 
@@ -623,7 +756,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             detail_title = self.query_one("#detail-title", Static)
             detail_content = self.query_one("#detail-content", Static)
             detail_panel = self.query_one("#detail-panel", VerticalScroll)
-        except Exception:
+        except NoMatches:
             return
 
         step_name = self.steps[self.step] if self.step < len(self.steps) else ""
@@ -656,6 +789,9 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             self._show_background_details(selected_name, detail_title, detail_content)
         elif step_name == "origin_feat":
             self._show_feat_details(selected_name, detail_title, detail_content)
+        elif step_name == "alignment":
+            detail_title.update(selected_name)
+            detail_content.update("Alignment reflects your character's moral and ethical outlook.")
         elif step_name == "skills":
             ruleset = self.char_data.get("ruleset")
             skill_name = self.current_options[self.selected_option]
@@ -686,6 +822,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             "Class",
             "Species",
             "Background",
+            "Alignment",
             "Abilities",
             "Skills",
         ]
@@ -698,11 +835,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
     def _get_ruleset_label(self) -> str:
         """Return a display label for the selected ruleset."""
         ruleset = self.char_data.get("ruleset", "dnd2024")
-        return {
-            "dnd2024": "D&D 2024 (5.5e)",
-            "dnd2014": "D&D 2014 (5e)",
-            "tov": "Tales of the Valiant",
-        }.get(ruleset, ruleset)
+        return RULESET_LABELS.get(ruleset, ruleset)
 
     def _get_ability_bonuses(self, ability_state: Optional[dict] = None) -> dict[str, int]:
         """Calculate ability bonuses based on ruleset and selections."""
@@ -820,6 +953,12 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             if self.char_data.get("species_feat"):
                 lines.append(f"Bonus Feat: {self.char_data.get('species_feat')}")
             lines.append(f"Background: {self.char_data.get('background', '')}")
+            alignment_value = self.char_data.get("alignment")
+            if alignment_value:
+                try:
+                    lines.append(f"Alignment: {Alignment(alignment_value).display_name}")
+                except ValueError:
+                    lines.append(f"Alignment: {alignment_value}")
             if self.char_data.get("origin_feat"):
                 lines.append(f"Origin Feat: {self.char_data.get('origin_feat')}")
             lines.append(self._get_ability_summary_line())
@@ -858,6 +997,15 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             lines.append(self.char_data.get("background", ""))
             if self.char_data.get("origin_feat"):
                 lines.append(f"Origin Feat: {self.char_data.get('origin_feat')}")
+        elif section == "Alignment":
+            alignment_value = self.char_data.get("alignment")
+            if alignment_value:
+                try:
+                    lines.append(Alignment(alignment_value).display_name)
+                except ValueError:
+                    lines.append(alignment_value)
+            else:
+                lines.append("Not set")
         elif section == "Abilities":
             lines.append(self._get_ability_summary_line())
             hp_line = self._get_hp_summary_line()
@@ -1907,7 +2055,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                 options_list.highlighted = self.selected_option
                 options_list.scroll_to_highlight()
             self._refresh_details()
-        except Exception:
+        except NoMatches:
             # Screen not mounted yet
             pass
 
@@ -1961,7 +2109,7 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
             options_list = self.query_one("#options-list", OptionList)
             if options_list.highlighted is not None:
                 self.selected_option = options_list.highlighted
-        except Exception:
+        except NoMatches:
             pass  # OptionList might not exist on some steps
 
         # Save current step data
@@ -1997,6 +2145,12 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
                 self.char_data["species_feat"] = self.current_options[self.selected_option]
         elif step_name == "background":
             self.char_data["background"] = self.current_options[self.selected_option]
+        elif step_name == "alignment":
+            selected = self.current_options[self.selected_option]
+            for alignment in Alignment:
+                if alignment.display_name == selected:
+                    self.char_data["alignment"] = alignment.value
+                    break
         elif step_name == "origin_feat":
             if self.current_options:
                 self.char_data["origin_feat"] = self.current_options[self.selected_option]
@@ -2090,6 +2244,11 @@ class CharacterCreationScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         char.species = self.char_data["species"]
         char.subspecies = self.char_data.get("subspecies")
         char.background = self.char_data["background"]
+        if self.char_data.get("alignment"):
+            try:
+                char.alignment = Alignment(self.char_data["alignment"])
+            except ValueError:
+                pass  # Invalid alignment value
 
         # Set ability scores from wizard data
         ruleset = self.char_data.get("ruleset", "dnd2024")
@@ -2545,9 +2704,9 @@ class WelcomeScreen(Screen):
     def _get_version(self) -> str:
         """Get the application version from package metadata."""
         try:
-            from importlib.metadata import version
+            from importlib.metadata import version, PackageNotFoundError
             return version("ccvault")
-        except Exception:
+        except PackageNotFoundError:
             return "dev"
 
     def compose(self) -> ComposeResult:
@@ -2601,7 +2760,7 @@ class WelcomeScreen(Screen):
                 if btn.display:  # Only focus visible buttons
                     if i == self.selected_index:
                         btn.focus()
-            except Exception:
+            except NoMatches:
                 pass
 
     def action_prev_button(self) -> None:
@@ -2807,7 +2966,7 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
     def _get_scroll_container(self):
         try:
             return self.query_one("#character-list", VerticalScroll)
-        except Exception:
+        except NoMatches:
             return None
 
     def _get_item_widget_class(self) -> str:
@@ -2895,12 +3054,44 @@ class DashboardPanel(VerticalScroll):
 
     can_focus = True
 
-    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+    def __init__(self, character: Optional[Character] = None, pane_id: Optional[str] = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.character = character
+        self.pane_id = pane_id
+        self.selected_index = 0
 
     def on_click(self) -> None:
         self.focus()
+
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        """Handle mouse selection within the panel."""
+        self.selected_index = event.index
+        self.focus()
+        self.refresh(layout=True)
+        event.stop()
+
+    def on_clickable_list_item_activated(self, event: ClickableListItem.Activated) -> None:
+        """Handle mouse activation within the panel."""
+        self.selected_index = event.index
+        self.focus()
+        self.refresh(layout=True)
+
+    def get_items(self) -> list:
+        """Return selectable items for this panel."""
+        return []
+
+    def get_selected_item(self):
+        items = self.get_items()
+        if not items:
+            return None
+        return items[min(self.selected_index, len(items) - 1)]
+
+    def move_selection(self, delta: int) -> None:
+        items = self.get_items()
+        if not items:
+            return
+        self.selected_index = max(0, min(len(items) - 1, self.selected_index + delta))
+        self.refresh(layout=True)
 
 
 class AbilityBlock(DashboardPanel):
@@ -2924,14 +3115,21 @@ class AbilityBlock(DashboardPanel):
 
     def compose(self) -> ComposeResult:
         yield Static("ABILITIES", classes="panel-title")
-        for ability in ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]:
+        abilities = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
+        self._abilities_cache = abilities
+        for index, ability in enumerate(abilities):
             score = getattr(self.character.abilities, ability)
             abbr = ability[:3].upper()
             modifier_class = self._get_modifier_class(score.modifier)
-            yield Static(
-                f"{abbr} {score.total:2d} ({score.modifier_str})",
-                classes=f"ability-row {modifier_class}",
+            selected = "▶" if index == self.selected_index else " "
+            yield ClickableListItem(
+                f"{selected} {abbr} {score.total:2d} ({score.modifier_str})",
+                index=index,
+                classes=f"ability-row {modifier_class} selected-row" if selected == "▶" else f"ability-row {modifier_class}",
             )
+
+    def get_items(self) -> list:
+        return getattr(self, "_abilities_cache", [])
 
 
 class CharacterInfo(DashboardPanel):
@@ -2987,7 +3185,7 @@ class CombatStats(DashboardPanel):
         yield Static("COMBAT", classes="panel-title")
         yield Static(f"AC: {c.combat.total_ac}    Init: {c.get_initiative():+d}")
         yield Static(f"Speed: {c.combat.total_speed}ft")
-        yield Static(f"HP: {hp.current}/{hp.maximum} T:{hp.temporary}", classes="hp-line")
+        yield Static(f"HP: {hp.current}/{hp.maximum} T: {hp.temporary}", classes="hp-line")
 
         yield Static(f"Hit Dice: {c.combat.get_hit_dice_display()}")
         yield Static(f"Prof Bonus: +{c.proficiency_bonus}")
@@ -3003,14 +3201,26 @@ class QuickActions(DashboardPanel):
     """Widget with quick action buttons."""
 
     def compose(self) -> ComposeResult:
+        actions = [
+            ("Spells", "s"),
+            ("Inventory", "i"),
+            ("Feats", "f"),
+            ("Notes", "n"),
+            ("AI Chat", "a"),
+            ("Roll", "r"),
+            ("Homebrew Guidelines", "h"),
+            ("Mastery", "m"),
+            ("Edit Character", "e"),
+        ]
+        self._actions_cache = actions
         yield Static("QUICK ACTIONS", classes="panel-title")
-        yield Static("\\[S]pells  \\[I]nventory")
-        yield Static("\\[F]eats   \\[N]otes")
-        yield Static("\\[A]I Chat \\[R]oll")
-        yield Static("\\[H]omebrew Guidelines")
-        yield Static("")
-        yield Static("\\[E]dit Character")
-        yield Static("\\[L]evel Up")
+        for index, (label, key) in enumerate(actions):
+            selected = "▶" if index == self.selected_index else " "
+            line = f"{selected} \\[{key.upper()}]{label}"
+            yield ClickableListItem(line, index=index, classes="selected-row" if selected == "▶" else "")
+
+    def get_items(self) -> list:
+        return getattr(self, "_actions_cache", [])
 
 
 class SkillList(DashboardPanel):
@@ -3024,7 +3234,14 @@ class SkillList(DashboardPanel):
 
         yield Static("SKILLS", classes="panel-title")
 
-        for skill in Skill:
+        skills = list(Skill)
+        skills = apply_item_order(
+            skills,
+            self.character.meta.panel_item_orders.get("skills"),
+            lambda s: s.display_name,
+        )
+        self._skills_cache = skills
+        for index, skill in enumerate(skills):
             ability = SKILL_ABILITY_MAP[skill]
             prof = self.character.proficiencies.get_skill_proficiency(skill)
             mod = self.character.get_skill_modifier(skill)
@@ -3037,10 +3254,15 @@ class SkillList(DashboardPanel):
             else:
                 indicator = "○"
 
-            yield Static(
-                f"{indicator} {skill.display_name} ({ability.abbreviation}) {mod:+d}",
-                classes="skill-row",
+            selected = "▶" if skill == self.get_selected_item() else " "
+            yield ClickableListItem(
+                f"{selected} {indicator} {skill.display_name} ({ability.abbreviation}) {mod:+d}",
+                index=index,
+                classes="skill-row selected-row" if selected == "▶" else "skill-row",
             )
+
+    def get_items(self) -> list:
+        return getattr(self, "_skills_cache", list(Skill))
 
 
 class SpellSlots(DashboardPanel):
@@ -3074,14 +3296,27 @@ class PreparedSpells(DashboardPanel):
     def compose(self) -> ComposeResult:
         yield Static("PREPARED SPELLS", classes="panel-title")
 
-        prepared = self.character.spellcasting.prepared
+        prepared = apply_item_order(
+            self.character.spellcasting.prepared,
+            self.character.meta.panel_item_orders.get("prepared_spells"),
+            lambda s: s,
+        )
+        self._prepared_cache = prepared
         if not prepared:
             yield Static("No spells prepared", classes="empty-state")
             yield Static("Press \\[S] to browse spells", classes="empty-state-hint")
             return
 
-        for spell in prepared:
-            yield Static(f"• {spell}")
+        for index, spell in enumerate(prepared):
+            selected = "▶" if index == self.selected_index else " "
+            yield ClickableListItem(
+                f"{selected} {spell}",
+                index=index,
+                classes="selected-row" if selected == "▶" else "",
+            )
+
+    def get_items(self) -> list:
+        return getattr(self, "_prepared_cache", [])
 
 
 class KnownSpells(DashboardPanel):
@@ -3092,12 +3327,25 @@ class KnownSpells(DashboardPanel):
 
     def compose(self) -> ComposeResult:
         yield Static("KNOWN SPELLS", classes="panel-title")
-        known = self.character.spellcasting.known
+        known = apply_item_order(
+            self.character.spellcasting.known,
+            self.character.meta.panel_item_orders.get("known_spells"),
+            lambda s: s,
+        )
+        self._known_cache = known
         if not known:
             yield Static("No known spells", classes="empty-state")
             return
-        for spell in known:
-            yield Static(f"• {spell}")
+        for index, spell in enumerate(known):
+            selected = "▶" if index == self.selected_index else " "
+            yield ClickableListItem(
+                f"{selected} {spell}",
+                index=index,
+                classes="selected-row" if selected == "▶" else "",
+            )
+
+    def get_items(self) -> list:
+        return getattr(self, "_known_cache", [])
 
 
 class WeaponsPane(DashboardPanel):
@@ -3105,6 +3353,48 @@ class WeaponsPane(DashboardPanel):
 
     def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
         super().__init__(character=character, **kwargs)
+
+    def _is_weapon_proficient(self, weapon) -> bool:
+        return is_weapon_proficient(self.character, weapon)
+
+    def _ability_modifier_for_weapon(self, weapon) -> int:
+        str_mod = self.character.abilities.strength.modifier
+        dex_mod = self.character.abilities.dexterity.modifier
+        if "Finesse" in weapon.properties:
+            return max(str_mod, dex_mod)
+        if "Ranged" in weapon.category:
+            return dex_mod
+        return str_mod
+
+    def _format_damage(self, damage_die: str, bonus: int) -> str:
+        if bonus == 0:
+            return damage_die
+        sign = "+" if bonus > 0 else "-"
+        return f"{damage_die}{sign}{abs(bonus)}"
+
+    def _versatile_die(self, damage_die: str) -> Optional[str]:
+        import re
+
+        match = re.match(r"^(\\d+)d(\\d+)$", damage_die)
+        if not match:
+            return None
+        count, die_size = int(match.group(1)), int(match.group(2))
+        if count != 1:
+            return None
+        step_map = {4: 6, 6: 8, 8: 10, 10: 12}
+        new_size = step_map.get(die_size)
+        if not new_size:
+            return None
+        return f"{count}d{new_size}"
+
+    def _weapon_description(self, weapon) -> str:
+        category = "weapon"
+        if "Melee" in weapon.category:
+            category = "melee weapon"
+        elif "Ranged" in weapon.category:
+            category = "ranged weapon"
+        tier = "Simple" if "Simple" in weapon.category else "Martial"
+        return f"{tier} {category} dealing {weapon.damage} {weapon.damage_type} damage."
 
     def compose(self) -> ComposeResult:
         from dnd_manager.data import get_weapon_by_name
@@ -3115,14 +3405,71 @@ class WeaponsPane(DashboardPanel):
         for item in items:
             if get_weapon_by_name(item.name):
                 weapons.append(item)
+        weapons = apply_item_order(weapons, self.character.meta.panel_item_orders.get("weapons"), lambda i: i.name)
+        self._weapons_cache = weapons
         if not weapons:
             yield Static("No weapons in inventory", classes="empty-state")
             return
-        for item in weapons:
+        for index, item in enumerate(weapons):
+            weapon = get_weapon_by_name(item.name)
+            if not weapon:
+                continue
             equipped = True if item.equipped else False
             marker = "★" if equipped else " "
             qty = f"x{item.quantity}" if item.quantity > 1 else ""
-            yield Static(f"{marker} {item.name} {qty}".strip())
+            selected = "▶" if index == self.selected_index else " "
+            proficient = self._is_weapon_proficient(weapon)
+            ability_mod = self._ability_modifier_for_weapon(weapon)
+            attack_bonus = ability_mod + (self.character.proficiency_bonus if proficient else 0)
+            damage = self._format_damage(weapon.damage, ability_mod)
+            versatile = self._versatile_die(weapon.damage) if "Versatile" in weapon.properties else None
+            range_text = None
+            if weapon.range_normal:
+                if weapon.range_long:
+                    range_text = f"Range {weapon.range_normal}/{weapon.range_long}"
+                else:
+                    range_text = f"Range {weapon.range_normal}"
+
+            status = []
+            if item.attuned:
+                status.append("A")
+            if item.bonded:
+                status.append("B")
+            if item.held:
+                status.append(item.held[0].upper())
+            status_text = f"[{''.join(status)}]" if status else ""
+            yield ClickableListItem(
+                f"{selected} {marker} {item.name} {qty} {status_text}".strip(),
+                index=index,
+                classes="selected-row" if selected == "▶" else "",
+            )
+            prof_label = "" if proficient else " (no prof)"
+            yield Static(f"  {attack_bonus:+d} to hit{prof_label}, {damage} {weapon.damage_type}")
+
+            detail_parts = []
+            if range_text:
+                detail_parts.append(range_text)
+            if weapon.properties:
+                detail_parts.append("Properties: " + ", ".join(weapon.properties))
+            if versatile:
+                detail_parts.append(f"Versatile {self._format_damage(versatile, ability_mod)}")
+            if detail_parts:
+                yield Static("  " + " • ".join(detail_parts))
+
+            mastery = None
+            if self.character.meta.ruleset == RulesetId.DND_2024 and self.character.can_use_weapon_mastery(weapon.name):
+                mastery = get_weapon_mastery_for_weapon(weapon.name)
+            if mastery:
+                summary = get_weapon_mastery_summary(mastery) or ""
+                if summary:
+                    yield Static(f"  Mastery: {mastery} — {summary}")
+                else:
+                    yield Static(f"  Mastery: {mastery}")
+
+            yield Static(f"  {self._weapon_description(weapon)}")
+
+    def get_items(self) -> list:
+        return getattr(self, "_weapons_cache", [])
 
 
 class FeatsPane(DashboardPanel):
@@ -3134,11 +3481,25 @@ class FeatsPane(DashboardPanel):
     def compose(self) -> ComposeResult:
         yield Static("FEATS", classes="panel-title")
         feats = [f for f in self.character.features if f.source == "feat"]
+        feats = apply_item_order(
+            feats,
+            self.character.meta.panel_item_orders.get("feats"),
+            lambda f: f.name,
+        )
+        self._feats_cache = feats
         if not feats:
             yield Static("No feats", classes="empty-state")
             return
-        for feat in feats:
-            yield Static(f"• {feat.name}")
+        for index, feat in enumerate(feats):
+            selected = "▶" if index == self.selected_index else " "
+            yield ClickableListItem(
+                f"{selected} {feat.name}",
+                index=index,
+                classes="selected-row" if selected == "▶" else "",
+            )
+
+    def get_items(self) -> list:
+        return getattr(self, "_feats_cache", [])
 
 
 class InventoryPane(DashboardPanel):
@@ -3149,15 +3510,38 @@ class InventoryPane(DashboardPanel):
 
     def compose(self) -> ComposeResult:
         yield Static("INVENTORY", classes="panel-title")
-        items = self.character.equipment.items
+        items = apply_item_order(
+            self.character.equipment.items,
+            self.character.meta.panel_item_orders.get("inventory"),
+            lambda i: i.name,
+        )
+        self._inventory_cache = items
         if not items:
             yield Static("No items", classes="empty-state")
-        for item in items:
+        for index, item in enumerate(items):
+            selected = "▶" if index == self.selected_index else " "
             qty = f"x{item.quantity}" if item.quantity > 1 else ""
-            yield Static(f"• {item.name} {qty}".strip())
+            status = []
+            if item.equipped:
+                status.append("E")
+            if item.attuned:
+                status.append("A")
+            if item.bonded:
+                status.append("B")
+            if item.held:
+                status.append(item.held[0].upper())
+            status_text = f"[{''.join(status)}]" if status else ""
+            yield ClickableListItem(
+                f"{selected} {item.name} {qty} {status_text}".strip(),
+                index=index,
+                classes="selected-row" if selected == "▶" else "",
+            )
         currency = self.character.equipment.currency
         yield Static("")
         yield Static(f"Gold: {currency.gp}  Silver: {currency.sp}  Copper: {currency.cp}")
+
+    def get_items(self) -> list:
+        return getattr(self, "_inventory_cache", [])
 
 
 class ActionsPane(DashboardPanel):
@@ -4328,7 +4712,7 @@ class LibraryBrowserScreen(ListNavigationMixin, Screen):
     def _get_scroll_container(self):
         try:
             return self.query_one("#lib-list", VerticalScroll)
-        except Exception:
+        except NoMatches:
             return None
 
     def _get_item_widget_class(self) -> str:
@@ -4352,7 +4736,7 @@ class LibraryBrowserScreen(ListNavigationMixin, Screen):
         try:
             if self.query_one("#lib-search", Input).has_focus:
                 return
-        except Exception:
+        except NoMatches:
             pass
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
@@ -4622,6 +5006,7 @@ class LevelManagementScreen(Screen):
     def __init__(self, character: Character, **kwargs) -> None:
         super().__init__(**kwargs)
         self.character = character
+        self._pane_focus_index = 0
         self.original_level = character.total_level
         self.target_level = character.total_level
         self.has_changes = False
@@ -5578,7 +5963,7 @@ class FeatPickerScreen(ListNavigationMixin, Screen):
     def _get_scroll_container(self):
         try:
             return self.query_one("#feat-list", VerticalScroll)
-        except Exception:
+        except NoMatches:
             return None
 
     def _get_item_widget_class(self) -> str:
@@ -5603,7 +5988,7 @@ class FeatPickerScreen(ListNavigationMixin, Screen):
         try:
             if self.query_one("#feat-search", Input).has_focus:
                 return
-        except Exception:
+        except NoMatches:
             pass
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
@@ -5756,7 +6141,7 @@ class SubclassPickerScreen(ListNavigationMixin, Screen):
     def _get_scroll_container(self):
         try:
             return self.query_one("#subclass-list", VerticalScroll)
-        except Exception:
+        except NoMatches:
             return None
 
     def _get_item_widget_class(self) -> str:
@@ -6243,12 +6628,15 @@ class StatBonusScreen(Screen):
         Binding("a", "add_bonus", "Add Bonus"),
         Binding("d", "delete_bonus", "Delete"),
         Binding("t", "toggle_temporary", "Toggle Temp"),
+        Binding("left", "dec_bonus", "Dec Bonus", show=False),
+        Binding("right", "inc_bonus", "Inc Bonus", show=False),
     ]
 
-    def __init__(self, character: Character, ability: str = "strength", **kwargs) -> None:
+    def __init__(self, character: Character, ability: str = "strength", default_source: Optional[str] = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.character = character
         self.ability = ability
+        self.default_source = default_source
         self.selected_index = 0
         self.bonuses: list = []
 
@@ -6256,7 +6644,7 @@ class StatBonusScreen(Screen):
         yield Header()
         yield Container(
             Static(f"Stat Bonuses - {self.ability.upper()}", classes="title"),
-            Static("↑/↓ Select  \\[A] Add  \\[D] Delete  \\[T] Toggle Temp  \\[Esc] Back", classes="subtitle"),
+            Static("↑/↓ Select  ←/→ Adjust  \\[A] Add  \\[D] Delete  \\[T] Toggle Temp  \\[Esc] Back", classes="subtitle"),
             Horizontal(
                 Vertical(
                     Static("ACTIVE BONUSES", classes="panel-title"),
@@ -6360,7 +6748,7 @@ class StatBonusScreen(Screen):
 
         # Create a basic new bonus
         new_bonus = StatBonus(
-            source="New Bonus",
+            source=self.default_source or "New Bonus",
             ability=self.ability,
             bonus=1,
             temporary=False,
@@ -6400,6 +6788,30 @@ class StatBonusScreen(Screen):
         self.app.save_character()
         status = "temporary" if bonus.temporary else "permanent"
         self.notify(f"{bonus.source} is now {status}")
+        self._refresh_bonuses()
+
+    def action_inc_bonus(self) -> None:
+        """Increase selected bonus value."""
+        if not self.bonuses or self.selected_index >= len(self.bonuses):
+            return
+        bonus = self.bonuses[self.selected_index]
+        if bonus.is_override:
+            bonus.override_value = (bonus.override_value or 0) + 1
+        else:
+            bonus.bonus += 1
+        self.app.save_character()
+        self._refresh_bonuses()
+
+    def action_dec_bonus(self) -> None:
+        """Decrease selected bonus value."""
+        if not self.bonuses or self.selected_index >= len(self.bonuses):
+            return
+        bonus = self.bonuses[self.selected_index]
+        if bonus.is_override:
+            bonus.override_value = (bonus.override_value or 0) - 1
+        else:
+            bonus.bonus -= 1
+        self.app.save_character()
         self._refresh_bonuses()
 
     def action_back(self) -> None:
@@ -6522,6 +6934,85 @@ class HPEditorScreen(Screen):
 
     def action_back(self) -> None:
         """Go back."""
+        self.app.pop_screen()
+
+
+class AbilityPickScreen(ListNavigationMixin, Screen):
+    """Pick an ability for applying a stat bonus."""
+
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+        Binding("enter", "select", "Select"),
+        Binding("up", "up", "Up", show=False),
+        Binding("down", "down", "Down", show=False),
+    ]
+
+    def __init__(self, character: Character, default_source: Optional[str] = None, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+        self.default_source = default_source
+        self.abilities = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
+        self.selected_index = 0
+        self._last_letter = ""
+        self._last_letter_index = -1
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Container(
+            Static("Choose Ability", classes="title"),
+            Static("↑/↓ Select  Enter Apply  Esc Back", classes="subtitle"),
+            VerticalScroll(id="ability-pick-list", classes="bonus-list"),
+            id="ability-pick-container",
+        )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._refresh_list()
+
+    def _refresh_list(self) -> None:
+        list_widget = self.query_one("#ability-pick-list", VerticalScroll)
+        list_widget.remove_children()
+        for i, ability in enumerate(self.abilities):
+            label = ability.title()
+            classes = "bonus-row"
+            if i == self.selected_index:
+                classes += " selected"
+            list_widget.mount(ClickableListItem(f"  {label}", index=i, classes=classes))
+
+    def action_up(self) -> None:
+        self._navigate_up()
+
+    def action_down(self) -> None:
+        self._navigate_down()
+
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        self.selected_index = event.index
+        self._refresh_list()
+
+    def action_select(self) -> None:
+        ability = self.abilities[self.selected_index]
+        self.app.push_screen(StatBonusScreen(self.character, ability, default_source=self.default_source))
+
+    # ListNavigationMixin implementation
+    def _get_list_items(self) -> list:
+        return self.abilities
+
+    def _get_item_name(self, item) -> str:
+        return item
+
+    def _get_scroll_container(self):
+        try:
+            return self.query_one("#ability-pick-list", VerticalScroll)
+        except NoMatches:
+            return None
+
+    def _update_selection(self) -> None:
+        self._refresh_list()
+
+    def _get_item_widget_class(self) -> str:
+        return "bonus-row"
+
+    def action_back(self) -> None:
         self.app.pop_screen()
 
 
@@ -6875,7 +7366,7 @@ class InventoryScreen(ScreenContextMixin, ListNavigationMixin, Screen):
         try:
             bar = self.query_one(".currency-bar", Static)
             bar.update(f"💰 {c.pp}pp | {c.gp}gp | {c.ep}ep | {c.sp}sp | {c.cp}cp")
-        except Exception:
+        except NoMatches:
             pass
 
     # ListNavigationMixin implementation
@@ -6888,7 +7379,7 @@ class InventoryScreen(ScreenContextMixin, ListNavigationMixin, Screen):
     def _get_scroll_container(self):
         try:
             return self.query_one("#equipment-list", VerticalScroll)
-        except Exception:
+        except NoMatches:
             return None
 
     def _get_item_widget_class(self) -> str:
@@ -7099,7 +7590,7 @@ class MagicItemBrowserScreen(ListNavigationMixin, Screen):
     def _get_scroll_container(self):
         try:
             return self.query_one("#item-list", VerticalScroll)
-        except Exception:
+        except NoMatches:
             return None
 
     def _get_item_widget_class(self) -> str:
@@ -7123,7 +7614,7 @@ class MagicItemBrowserScreen(ListNavigationMixin, Screen):
         try:
             if self.query_one("#item-search", Input).has_focus:
                 return
-        except Exception:
+        except NoMatches:
             pass
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
@@ -7537,7 +8028,7 @@ class SpellBrowserScreen(ListNavigationMixin, Screen):
     def _get_scroll_container(self):
         try:
             return self.query_one("#spell-list", VerticalScroll)
-        except Exception:
+        except NoMatches:
             return None
 
     def _get_item_widget_class(self) -> str:
@@ -7561,7 +8052,7 @@ class SpellBrowserScreen(ListNavigationMixin, Screen):
         try:
             if self.query_one("#spell-search", Input).has_focus:
                 return
-        except Exception:
+        except NoMatches:
             pass
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
@@ -8161,7 +8652,7 @@ class SessionNotesScreen(ListNavigationMixin, Screen):
     def _get_scroll_container(self):
         try:
             return self.query_one("#notes-list", VerticalScroll)
-        except Exception:
+        except NoMatches:
             return None
 
     def _get_item_widget_class(self) -> str:
@@ -8185,7 +8676,7 @@ class SessionNotesScreen(ListNavigationMixin, Screen):
         try:
             if self.query_one("#notes-search", Input).has_focus:
                 return
-        except Exception:
+        except NoMatches:
             pass
         if self._handle_key_for_letter_jump(event.key):
             event.prevent_default()
@@ -8502,10 +8993,18 @@ class MainDashboard(ScreenContextMixin, Screen):
     """Main character dashboard screen."""
 
     BINDINGS = [
+        Binding("tab", "next_pane", "Next Pane"),
+        Binding("shift+tab", "prev_pane", "Prev Pane"),
+        Binding("backtab", "prev_pane", "Prev Pane"),
+        Binding("up", "pane_up", "Up", show=False),
+        Binding("down", "pane_down", "Down", show=False),
+        Binding("enter", "pane_select", "Select", show=False),
         Binding("escape", "back", "Back"),
         Binding("q", "home", "Home"),
         Binding("?", "help", "Help"),
         Binding("v", "layout", "Layout"),
+        Binding("o", "order", "Order"),
+        Binding("m", "mastery", "Mastery"),
         Binding("s", "spells", "Spells"),
         Binding("i", "inventory", "Inventory"),
         Binding("f", "features", "Features"),
@@ -8586,6 +9085,7 @@ class MainDashboard(ScreenContextMixin, Screen):
             rows = [panels[:4], panels[4:8]]
 
         row_widgets: list[Horizontal] = []
+        self._pane_order: list[DashboardPanel] = []
         for idx, row in enumerate(rows):
             widgets = []
             for pane_id in row:
@@ -8593,7 +9093,9 @@ class MainDashboard(ScreenContextMixin, Screen):
                 if not pane_def:
                     continue
                 _, pane_cls, pane_classes = pane_def
-                widgets.append(pane_cls(character=self.character, classes=pane_classes))
+                pane = pane_cls(character=self.character, pane_id=pane_id, classes=pane_classes)
+                widgets.append(pane)
+                self._pane_order.append(pane)
             row_class = "top-row" if idx == 0 else "bottom-row"
             if layout_name == "wide":
                 row_class = "wide-row"
@@ -8603,6 +9105,18 @@ class MainDashboard(ScreenContextMixin, Screen):
     def on_mount(self) -> None:
         """Update draft notice on mount."""
         self._update_draft_notice()
+        self._focus_pane(0)
+
+    def _focus_pane(self, index: int) -> None:
+        if not getattr(self, "_pane_order", None):
+            return
+        self._pane_focus_index = max(0, min(len(self._pane_order) - 1, index))
+        pane = self._pane_order[self._pane_focus_index]
+        try:
+            pane.focus()
+        except (NoMatches, AttributeError):
+            # Widget may not be mounted or focusable
+            pass
 
     def _update_draft_notice(self) -> None:
         """Show draft notice if a character creation draft exists."""
@@ -8643,6 +9157,80 @@ class MainDashboard(ScreenContextMixin, Screen):
         if not isinstance(self.app.screen, WelcomeScreen):
             self.app.push_screen(WelcomeScreen())
 
+    def action_next_pane(self) -> None:
+        """Move focus to next pane."""
+        if not getattr(self, "_pane_order", None):
+            return
+        next_index = (self._pane_focus_index + 1) % len(self._pane_order)
+        self._focus_pane(next_index)
+
+    def action_prev_pane(self) -> None:
+        """Move focus to previous pane."""
+        if not getattr(self, "_pane_order", None):
+            return
+        next_index = (self._pane_focus_index - 1) % len(self._pane_order)
+        self._focus_pane(next_index)
+
+    def action_pane_up(self) -> None:
+        """Move selection up within focused pane."""
+        pane = self._pane_order[self._pane_focus_index] if getattr(self, "_pane_order", None) else None
+        if pane:
+            pane.move_selection(-1)
+
+    def action_pane_down(self) -> None:
+        """Move selection down within focused pane."""
+        pane = self._pane_order[self._pane_focus_index] if getattr(self, "_pane_order", None) else None
+        if pane:
+            pane.move_selection(1)
+
+    def action_pane_select(self) -> None:
+        """Open detail overlay for selected item or trigger quick action."""
+        pane = self._pane_order[self._pane_focus_index] if getattr(self, "_pane_order", None) else None
+        if not pane:
+            return
+        if pane.pane_id == "shortcuts":
+            action = pane.get_selected_item()
+            if not action:
+                return
+            label, key = action
+            key = key.lower()
+            if key == "s":
+                self.action_spells()
+            elif key == "i":
+                self.action_inventory()
+            elif key == "f":
+                self.action_features()
+            elif key == "n":
+                self.action_notes()
+            elif key == "a":
+                self.action_ai_chat()
+            elif key == "r":
+                self.action_roll()
+            elif key == "h":
+                self.action_homebrew()
+            elif key == "m":
+                self.action_mastery()
+            elif key == "e":
+                self.action_edit()
+            return
+
+        item = pane.get_selected_item()
+        if item is None:
+            return
+        self.app.push_screen(DetailOverlay(self.character, pane.pane_id, item))
+
+    def on_clickable_list_item_activated(self, event: ClickableListItem.Activated) -> None:
+        """Open details on double-click."""
+        pane = event.sender
+        while pane and not isinstance(pane, DashboardPanel):
+            pane = pane.parent
+        if not pane:
+            return
+        if getattr(self, "_pane_order", None) and pane in self._pane_order:
+            self._focus_pane(self._pane_order.index(pane))
+        self.action_pane_select()
+        event.stop()
+
     def action_resume_draft(self) -> None:
         """Resume character creation draft."""
         from dnd_manager.storage.yaml_store import get_default_draft_store
@@ -8657,6 +9245,14 @@ class MainDashboard(ScreenContextMixin, Screen):
     def action_layout(self) -> None:
         """Open dashboard layout settings."""
         self.app.push_screen(DashboardLayoutScreen(self.character))
+
+    def action_order(self) -> None:
+        """Open per-panel ordering screen."""
+        self.app.push_screen(PanelOrderScreen(self.character))
+
+    def action_mastery(self) -> None:
+        """Open weapon mastery selection."""
+        self.app.push_screen(WeaponMasteryScreen(self.character))
 
 
 class DashboardLayoutScreen(Screen):
@@ -8884,6 +9480,626 @@ class DashboardLayoutScreen(Screen):
     def action_long_rest(self) -> None:
         """Open long rest screen."""
         self.app.push_screen(LongRestScreen(self.character))
+
+
+class WeaponMasteryScreen(ListNavigationMixin, Screen):
+    """Screen for selecting weapon masteries."""
+
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+        Binding("up", "up", "Up", show=False),
+        Binding("down", "down", "Down", show=False),
+        Binding("space", "toggle", "Toggle"),
+        Binding("enter", "toggle", "Toggle"),
+        Binding("c", "clear", "Clear"),
+    ]
+
+    def __init__(self, character: Character, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+        self.selected_index = 0
+        self._last_letter = ""
+        self._last_letter_index = -1
+        self.available_weapons: list = []
+        self.mastery_limit = self.character.get_weapon_mastery_limit()
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Container(
+            Static("Weapon Mastery", classes="title"),
+            Static(id="mastery-count", classes="subtitle"),
+            Horizontal(
+                Vertical(
+                    Static("WEAPONS", classes="panel-title"),
+                    VerticalScroll(id="mastery-weapon-list", classes="feat-browser-list"),
+                    classes="panel browser-panel",
+                ),
+                Vertical(
+                    Static("DETAILS", classes="panel-title"),
+                    VerticalScroll(id="mastery-details", classes="feat-details"),
+                    classes="panel browser-panel",
+                ),
+                classes="browser-row",
+            ),
+            id="mastery-container",
+        )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._refresh_weapon_list()
+
+    def _update_count(self) -> None:
+        count = len(self.character.weapon_masteries)
+        limit = self.mastery_limit
+        suffix = f"{count}/{limit} selected" if limit else "No mastery available"
+        self.query_one("#mastery-count", Static).update(suffix)
+
+    def _refresh_weapon_list(self) -> None:
+        from dnd_manager.data import ALL_WEAPONS
+
+        list_widget = self.query_one("#mastery-weapon-list", VerticalScroll)
+        list_widget.remove_children()
+        self.mastery_limit = self.character.get_weapon_mastery_limit()
+
+        if self.mastery_limit <= 0:
+            list_widget.mount(Static("  (No weapon mastery for this character)", classes="no-items"))
+            self._refresh_details()
+            self._update_count()
+            return
+
+        weapons = []
+        for weapon in ALL_WEAPONS:
+            if get_weapon_mastery_for_weapon(weapon.name) and is_weapon_proficient(self.character, weapon):
+                weapons.append(weapon)
+        weapons.sort(key=lambda w: w.name)
+        self.available_weapons = weapons
+
+        # Drop invalid selections
+        valid_names = {w.name for w in weapons}
+        self.character.weapon_masteries = [w for w in self.character.weapon_masteries if w in valid_names]
+
+        if not weapons:
+            list_widget.mount(Static("  (No eligible weapons)", classes="no-items"))
+            self._refresh_details()
+            self._update_count()
+            return
+
+        self.selected_index = min(self.selected_index, len(weapons) - 1)
+        owned = {i.name for i in self.character.equipment.items}
+
+        for i, weapon in enumerate(weapons):
+            checked = "x" if weapon.name in self.character.weapon_masteries else " "
+            marker = "★" if weapon.name in owned else " "
+            row = f"  [{checked}] {marker} {weapon.name}"
+            row_class = "feat-row"
+            if i == self.selected_index:
+                row_class += " selected"
+            list_widget.mount(ClickableListItem(row, index=i, classes=row_class))
+
+        self._refresh_details()
+        self._update_count()
+
+    def _refresh_details(self) -> None:
+        details = self.query_one("#mastery-details", VerticalScroll)
+        details.remove_children()
+        if not self.available_weapons:
+            return
+
+        weapon = self.available_weapons[self.selected_index]
+        mastery = get_weapon_mastery_for_weapon(weapon.name)
+        summary = get_weapon_mastery_summary(mastery) if mastery else None
+
+        details.mount(Static(weapon.name, classes="panel-title"))
+        details.mount(Static(f"Damage: {weapon.damage} {weapon.damage_type}"))
+        if weapon.properties:
+            details.mount(Static("Properties: " + ", ".join(weapon.properties)))
+        if weapon.range_normal:
+            if weapon.range_long:
+                details.mount(Static(f"Range: {weapon.range_normal}/{weapon.range_long}"))
+            else:
+                details.mount(Static(f"Range: {weapon.range_normal}"))
+        if mastery:
+            details.mount(Static(f"Mastery: {mastery}"))
+            if summary:
+                details.mount(Static(summary))
+
+    def action_toggle(self) -> None:
+        if self.mastery_limit <= 0 or not self.available_weapons:
+            return
+        weapon = self.available_weapons[self.selected_index]
+        if weapon.name in self.character.weapon_masteries:
+            self.character.weapon_masteries.remove(weapon.name)
+        else:
+            if len(self.character.weapon_masteries) >= self.mastery_limit:
+                self.notify(f"Select up to {self.mastery_limit} weapons", severity="warning")
+                return
+            self.character.weapon_masteries.append(weapon.name)
+        self.app.save_character()
+        self._refresh_weapon_list()
+
+    def action_clear(self) -> None:
+        if not self.character.weapon_masteries:
+            return
+        self.character.weapon_masteries = []
+        self.app.save_character()
+        self._refresh_weapon_list()
+
+    def action_up(self) -> None:
+        self._navigate_up()
+
+    def action_down(self) -> None:
+        self._navigate_down()
+
+    def on_key(self, event) -> None:
+        if self._handle_key_for_letter_jump(event.key):
+            event.prevent_default()
+
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        self.selected_index = event.index
+        self._refresh_weapon_list()
+
+    # ListNavigationMixin implementation
+    def _get_list_items(self) -> list:
+        return self.available_weapons
+
+    def _get_item_name(self, item) -> str:
+        return item.name
+
+    def _get_scroll_container(self):
+        try:
+            return self.query_one("#mastery-weapon-list", VerticalScroll)
+        except NoMatches:
+            return None
+
+    def _update_selection(self) -> None:
+        self._refresh_weapon_list()
+
+    def _get_item_widget_class(self) -> str:
+        return "feat-row"
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+
+ORDERABLE_PANELS = {
+    "weapons": "Weapons",
+    "skills": "Skills",
+    "feats": "Feats",
+    "inventory": "Inventory",
+    "known_spells": "Known Spells",
+    "prepared_spells": "Prepared Spells",
+}
+
+
+class PanelOrderScreen(Screen):
+    """Reorder items within dashboard panels."""
+
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+        Binding("tab", "switch_column", "Switch Column"),
+        Binding("up", "up", "Up", show=False),
+        Binding("down", "down", "Down", show=False),
+        Binding("[", "move_up", "Move Up"),
+        Binding("]", "move_down", "Move Down"),
+        Binding("r", "reset_order", "Reset"),
+    ]
+
+    def __init__(self, character: Character, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+        self.panel_ids = list(ORDERABLE_PANELS.keys())
+        self.selected_panel_index = 0
+        self.selected_item_index = 0
+        self.active_column = "panels"
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Container(
+            Static("Reorder Panel Items", classes="title"),
+            Static("Tab switch column • [ ] move item • R reset • Esc back", classes="subtitle"),
+            Horizontal(
+                Vertical(
+                    Static("PANELS", classes="panel-title"),
+                    VerticalScroll(id="order-panel-list", classes="order-list"),
+                    classes="panel browser-panel",
+                ),
+                Vertical(
+                    Static("ITEMS", classes="panel-title"),
+                    VerticalScroll(id="order-item-list", classes="order-list"),
+                    classes="panel browser-panel",
+                ),
+                classes="browser-row",
+            ),
+            id="order-container",
+        )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._refresh_panels()
+        self._refresh_items()
+
+    def _get_panel_id(self) -> str:
+        if not self.panel_ids:
+            return ""
+        return self.panel_ids[self.selected_panel_index]
+
+    def _get_panel_items(self, panel_id: str) -> list[str]:
+        from dnd_manager.data import get_weapon_by_name
+        from dnd_manager.models.abilities import Skill
+
+        if panel_id == "weapons":
+            items = [i.name for i in self.character.equipment.items if get_weapon_by_name(i.name)]
+        elif panel_id == "skills":
+            items = [s.display_name for s in Skill]
+        elif panel_id == "feats":
+            items = [f.name for f in self.character.features if f.source == "feat"]
+        elif panel_id == "inventory":
+            items = [i.name for i in self.character.equipment.items]
+        elif panel_id == "known_spells":
+            items = list(self.character.spellcasting.known)
+        elif panel_id == "prepared_spells":
+            items = list(self.character.spellcasting.prepared)
+        else:
+            items = []
+        return items
+
+    def _normalize_order(self, panel_id: str, items: list[str]) -> list[str]:
+        order = self.character.meta.panel_item_orders.get(panel_id, [])
+        return apply_item_order(items, order, lambda s: s)
+
+    def _save_order(self, panel_id: str, items: list[str]) -> None:
+        self.character.meta.panel_item_orders[panel_id] = list(items)
+        self.app.save_character()
+
+    def _refresh_panels(self) -> None:
+        panel_list = self.query_one("#order-panel-list", VerticalScroll)
+        panel_list.remove_children()
+        for i, panel_id in enumerate(self.panel_ids):
+            label = ORDERABLE_PANELS[panel_id]
+            classes = "order-row order-panel-row"
+            if i == self.selected_panel_index and self.active_column == "panels":
+                classes += " selected"
+            panel_list.mount(ClickableListItem(f"  {label}", index=i, classes=classes))
+
+    def _refresh_items(self) -> None:
+        item_list = self.query_one("#order-item-list", VerticalScroll)
+        item_list.remove_children()
+        panel_id = self._get_panel_id()
+        items = self._normalize_order(panel_id, self._get_panel_items(panel_id))
+        if not items:
+            item_list.mount(Static("  (No items)", classes="no-items"))
+            return
+        self.selected_item_index = min(self.selected_item_index, max(0, len(items) - 1))
+        for i, item in enumerate(items):
+            classes = "order-row order-item-row"
+            if i == self.selected_item_index and self.active_column == "items":
+                classes += " selected"
+            item_list.mount(ClickableListItem(f"  {item}", index=i, classes=classes))
+
+    def action_switch_column(self) -> None:
+        self.active_column = "items" if self.active_column == "panels" else "panels"
+        self._refresh_panels()
+        self._refresh_items()
+
+    def action_up(self) -> None:
+        if self.active_column == "panels":
+            self.selected_panel_index = max(0, self.selected_panel_index - 1)
+            self.selected_item_index = 0
+            self._refresh_panels()
+            self._refresh_items()
+        else:
+            self.selected_item_index = max(0, self.selected_item_index - 1)
+            self._refresh_items()
+
+    def action_down(self) -> None:
+        if self.active_column == "panels":
+            self.selected_panel_index = min(len(self.panel_ids) - 1, self.selected_panel_index + 1)
+            self.selected_item_index = 0
+            self._refresh_panels()
+            self._refresh_items()
+        else:
+            panel_id = self._get_panel_id()
+            items = self._normalize_order(panel_id, self._get_panel_items(panel_id))
+            self.selected_item_index = min(len(items) - 1, self.selected_item_index + 1)
+            self._refresh_items()
+
+    def action_move_up(self) -> None:
+        if self.active_column != "items":
+            return
+        panel_id = self._get_panel_id()
+        items = self._normalize_order(panel_id, self._get_panel_items(panel_id))
+        if self.selected_item_index <= 0:
+            return
+        items[self.selected_item_index - 1], items[self.selected_item_index] = (
+            items[self.selected_item_index],
+            items[self.selected_item_index - 1],
+        )
+        self.selected_item_index -= 1
+        self._save_order(panel_id, items)
+        self._refresh_items()
+
+    def action_move_down(self) -> None:
+        if self.active_column != "items":
+            return
+        panel_id = self._get_panel_id()
+        items = self._normalize_order(panel_id, self._get_panel_items(panel_id))
+        if self.selected_item_index >= len(items) - 1:
+            return
+        items[self.selected_item_index + 1], items[self.selected_item_index] = (
+            items[self.selected_item_index],
+            items[self.selected_item_index + 1],
+        )
+        self.selected_item_index += 1
+        self._save_order(panel_id, items)
+        self._refresh_items()
+
+    def action_reset_order(self) -> None:
+        panel_id = self._get_panel_id()
+        if panel_id in self.character.meta.panel_item_orders:
+            del self.character.meta.panel_item_orders[panel_id]
+            self.app.save_character()
+        self._refresh_items()
+
+    def on_clickable_list_item_selected(self, event: ClickableListItem.Selected) -> None:
+        if "order-panel-row" in event.sender.classes:
+            self.selected_panel_index = event.index
+            self.selected_item_index = 0
+            self.active_column = "panels"
+            self._refresh_panels()
+            self._refresh_items()
+        elif "order-item-row" in event.sender.classes:
+            self.selected_item_index = event.index
+            self.active_column = "items"
+            self._refresh_items()
+            self._refresh_panels()
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+
+class DetailOverlay(ModalScreen):
+    """Modal overlay for viewing and interacting with a selected item."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("enter", "confirm", "Done"),
+        Binding("e", "toggle_equipped", "Equip"),
+        Binding("a", "toggle_attuned", "Attune"),
+        Binding("b", "toggle_bonded", "Bond"),
+        Binding("1", "hold_main", "Hold Main"),
+        Binding("2", "hold_off", "Hold Off"),
+        Binding("3", "hold_two", "Hold Two-Handed"),
+        Binding("h", "hp", "HP"),
+        Binding("t", "temp_hp", "Temp HP"),
+        Binding("s", "bonuses", "Bonuses"),
+    ]
+
+    def __init__(self, character: Character, pane_id: str, item, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.character = character
+        self.pane_id = pane_id
+        self.item = item
+        self._dirty = False
+        self._snapshot = self._snapshot_item()
+
+    def _snapshot_item(self) -> dict:
+        if hasattr(self.item, "model_dump"):
+            return dict(self.item.model_dump())
+        return {}
+
+    def _restore_item(self) -> None:
+        if not self._snapshot or not hasattr(self.item, "model_dump"):
+            return
+        for key, value in self._snapshot.items():
+            setattr(self.item, key, value)
+
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Static("Details", id="detail-overlay-title", classes="title"),
+            VerticalScroll(id="detail-overlay-body", classes="panel details-panel"),
+            Horizontal(
+                Button("Cancel", id="btn-cancel", variant="error"),
+                Button("Done", id="btn-done", variant="primary"),
+                classes="button-row",
+            ),
+            id="detail-overlay-container",
+        )
+
+    def on_mount(self) -> None:
+        self._refresh()
+
+    def _refresh(self) -> None:
+        body = self.query_one("#detail-overlay-body", VerticalScroll)
+        body.remove_children()
+
+        if self.pane_id in ("weapons", "inventory"):
+            self._render_inventory_item(body)
+        elif self.pane_id == "skills":
+            self._render_skill(body)
+        elif self.pane_id == "abilities":
+            self._render_ability(body)
+        elif self.pane_id == "feats":
+            self._render_feat(body)
+        elif self.pane_id in ("known_spells", "prepared_spells"):
+            self._render_spell(body)
+        else:
+            body.mount(Static("No details available."))
+
+        done_btn = self.query_one("#btn-done", Button)
+        done_btn.label = "Save" if self._dirty else "Done"
+
+    def _render_inventory_item(self, body: VerticalScroll) -> None:
+        from dnd_manager.data import get_weapon_by_name, get_equipment_by_name, get_armor_by_name
+
+        item = self.item
+        body.mount(Static(item.name, classes="panel-title"))
+        body.mount(Static(f"Qty: {item.quantity}"))
+        if item.equipped:
+            body.mount(Static("Equipped: Yes"))
+        if item.attuned:
+            body.mount(Static("Attuned: Yes"))
+        if item.bonded:
+            body.mount(Static("Bonded: Yes"))
+        if item.held:
+            body.mount(Static(f"Held: {item.held}"))
+
+        weapon = get_weapon_by_name(item.name)
+        armor = get_armor_by_name(item.name)
+        equipment = get_equipment_by_name(item.name)
+
+        if weapon:
+            body.mount(Static(f"Damage: {weapon.damage} {weapon.damage_type}"))
+            if weapon.properties:
+                body.mount(Static("Properties: " + ", ".join(weapon.properties)))
+            if weapon.range_normal:
+                if weapon.range_long:
+                    body.mount(Static(f"Range: {weapon.range_normal}/{weapon.range_long}"))
+                else:
+                    body.mount(Static(f"Range: {weapon.range_normal}"))
+            mastery = None
+            if self.character.meta.ruleset == RulesetId.DND_2024 and self.character.can_use_weapon_mastery(weapon.name):
+                mastery = get_weapon_mastery_for_weapon(weapon.name)
+            if mastery:
+                body.mount(Static(f"Mastery: {mastery}"))
+                summary = get_weapon_mastery_summary(mastery)
+                if summary:
+                    body.mount(Static(summary))
+        elif armor:
+            body.mount(Static(f"Armor: {armor.armor_type.value}"))
+            body.mount(Static(f"Base AC: {armor.base_ac}"))
+        elif equipment:
+            if equipment.description:
+                body.mount(Static(equipment.description))
+
+        if item.description:
+            body.mount(Static(""))
+            body.mount(Static(item.description))
+
+        body.mount(Static(""))
+        body.mount(Static("Actions: [E]quip  [A]ttune  [B]ond  [1]/[2]/[3] Hold  [H] HP  [T] Temp HP  [S] Bonuses"))
+
+    def _render_skill(self, body: VerticalScroll) -> None:
+        from dnd_manager.models.abilities import SKILL_ABILITY_MAP
+        skill = self.item
+        ability = SKILL_ABILITY_MAP[skill]
+        body.mount(Static(skill.display_name, classes="panel-title"))
+        body.mount(Static(f"Ability: {ability.display_name}"))
+        body.mount(Static(f"Modifier: {self.character.get_skill_modifier(skill):+d}"))
+        ruleset = self.character.meta.ruleset.value if hasattr(self.character.meta.ruleset, "value") else "dnd2024"
+        description = get_skill_description(skill.display_name, ruleset)
+        if description:
+            body.mount(Static(""))
+            body.mount(Static(description))
+
+    def _render_ability(self, body: VerticalScroll) -> None:
+        ability_key = self.item
+        score = getattr(self.character.abilities, ability_key)
+        body.mount(Static(ability_key.title(), classes="panel-title"))
+        body.mount(Static(f"Score: {score.total} (base {score.base}, bonus {score.bonus:+d})"))
+        body.mount(Static(f"Modifier: {score.modifier:+d}"))
+        body.mount(Static(""))
+        body.mount(Static("Actions: [S] Bonuses"))
+
+    def _render_feat(self, body: VerticalScroll) -> None:
+        feat = self.item
+        body.mount(Static(feat.name, classes="panel-title"))
+        if feat.description:
+            body.mount(Static(feat.description))
+
+    def _render_spell(self, body: VerticalScroll) -> None:
+        from dnd_manager.data import get_spell_by_name
+        spell_name = self.item
+        body.mount(Static(spell_name, classes="panel-title"))
+        spell = get_spell_by_name(spell_name)
+        if spell:
+            body.mount(Static(f"Level {spell.level} • {spell.school}"))
+            if spell.components:
+                body.mount(Static(f"Components: {spell.components}"))
+            if spell.range:
+                body.mount(Static(f"Range: {spell.range}"))
+            if spell.duration:
+                body.mount(Static(f"Duration: {spell.duration}"))
+            if spell.description:
+                body.mount(Static(""))
+                body.mount(Static(spell.description))
+        body.mount(Static(""))
+        body.mount(Static("Actions: [H] HP  [T] Temp HP"))
+
+    def action_toggle_equipped(self) -> None:
+        if not hasattr(self.item, "equipped"):
+            return
+        self.item.equipped = not self.item.equipped
+        self.character.apply_equipment_effects()
+        self._dirty = True
+        self._refresh()
+
+    def action_toggle_attuned(self) -> None:
+        if not hasattr(self.item, "attuned"):
+            return
+        self.item.attuned = not self.item.attuned
+        if self.item.attuned and self.character.equipment.attuned_count > 3:
+            self.notify("Attunement limit exceeded (3).", severity="warning")
+        self._dirty = True
+        self._refresh()
+
+    def action_toggle_bonded(self) -> None:
+        if not hasattr(self.item, "bonded"):
+            return
+        self.item.bonded = not self.item.bonded
+        self._dirty = True
+        self._refresh()
+
+    def _set_held(self, value: Optional[str]) -> None:
+        if not hasattr(self.item, "held"):
+            return
+        if value:
+            for item in self.character.equipment.items:
+                if item is not self.item and item.held == value:
+                    item.held = None
+        self.item.held = value
+        self._dirty = True
+        self._refresh()
+
+    def action_hold_main(self) -> None:
+        self._set_held("main")
+
+    def action_hold_off(self) -> None:
+        self._set_held("off")
+
+    def action_hold_two(self) -> None:
+        self._set_held("two")
+
+    def action_hp(self) -> None:
+        self.app.push_screen(HPEditorScreen(self.character))
+
+    def action_temp_hp(self) -> None:
+        self.app.push_screen(HPEditorScreen(self.character))
+
+    def action_bonuses(self) -> None:
+        if self.pane_id == "abilities":
+            self.app.push_screen(StatBonusScreen(self.character, self.item))
+            return
+        if self.pane_id in ("weapons", "inventory", "known_spells", "prepared_spells"):
+            source = self.item.name if hasattr(self.item, "name") else str(self.item)
+            self.app.push_screen(AbilityPickScreen(self.character, default_source=source))
+
+    def action_confirm(self) -> None:
+        if self._dirty:
+            self.character.apply_equipment_effects()
+            self.app.save_character()
+        self.app.pop_screen()
+
+    def action_cancel(self) -> None:
+        if self._dirty:
+            self._restore_item()
+            self.character.apply_equipment_effects()
+        self.app.pop_screen()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-cancel":
+            self.action_cancel()
+        elif event.button.id == "btn-done":
+            self.action_confirm()
 
 
 class ShortRestScreen(Screen):
@@ -9420,9 +10636,9 @@ class SettingsScreen(Screen):
 def _get_app_version() -> str:
     """Get the application version from package metadata."""
     try:
-        from importlib.metadata import version
+        from importlib.metadata import version, PackageNotFoundError
         return version("ccvault")
-    except Exception:
+    except PackageNotFoundError:
         return "dev"
 
 

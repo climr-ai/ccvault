@@ -1,8 +1,11 @@
 """AI provider registry and factory."""
 
+import logging
 from typing import Optional
 
-from dnd_manager.ai.base import AIProvider
+from dnd_manager.ai.base import AIProvider, AIError, AIConfigurationError
+
+logger = logging.getLogger(__name__)
 
 
 # Registry of available providers
@@ -81,8 +84,13 @@ def get_configured_providers() -> list[AIProvider]:
             provider = provider_class()
             if provider.is_configured():
                 configured.append(provider)
-        except Exception:
+        except AIConfigurationError:
+            # Provider not configured - expected, skip silently
             pass
+        except AIError as e:
+            logger.debug("Provider %s not available: %s", name, e)
+        except (ImportError, ModuleNotFoundError) as e:
+            logger.debug("Provider %s dependencies not installed: %s", name, e)
     return configured
 
 
@@ -101,7 +109,12 @@ def get_default_provider() -> Optional[AIProvider]:
                 provider = provider_class()
                 if provider.is_configured():
                     return provider
-            except Exception:
+            except AIConfigurationError:
+                # Provider not configured - expected, try next
                 pass
+            except AIError as e:
+                logger.debug("Provider %s not available: %s", name, e)
+            except (ImportError, ModuleNotFoundError) as e:
+                logger.debug("Provider %s dependencies not installed: %s", name, e)
 
     return None

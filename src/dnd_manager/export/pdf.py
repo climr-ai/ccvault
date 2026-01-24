@@ -108,7 +108,7 @@ class PDFExporter:
         html = HTML(string=html_content)
         try:
             html.write_pdf(output_path)
-        except Exception:
+        except (OSError, IOError):
             # Clean up partial file if write failed
             if output_path.exists():
                 try:

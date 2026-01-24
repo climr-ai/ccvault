@@ -88,9 +88,9 @@ class StorageConfig(BaseModel):
 def _get_app_version() -> str:
     """Get version from package metadata."""
     try:
-        from importlib.metadata import version
+        from importlib.metadata import version, PackageNotFoundError
         return version("ccvault")
-    except Exception:
+    except PackageNotFoundError:
         return "dev"
 
 
@@ -414,7 +414,7 @@ class Config(BaseModel):
                     yaml.dump(data, f, default_flow_style=False, sort_keys=False)
                 # Atomic rename
                 Path(temp_path).replace(config_path)
-            except Exception:
+            except (OSError, IOError, yaml.YAMLError):
                 # Clean up temp file on error
                 try:
                     os.unlink(temp_path)

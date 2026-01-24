@@ -4,7 +4,7 @@ import os
 import shutil
 import logging
 from pathlib import Path
-from typing import Optional, TypeVar, Generic
+from typing import Any, Optional, TypeVar, Generic
 from datetime import datetime
 from dataclasses import dataclass
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class LoadResult:
     """Result of a load operation with error details."""
     success: bool
-    data: Optional[any] = None
+    data: Optional[Any] = None
     error: Optional[str] = None
     recovered_from_backup: bool = False
     backup_used: Optional[Path] = None

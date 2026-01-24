@@ -12,6 +12,7 @@ Routing strategy:
 """
 
 import asyncio
+import logging
 import os
 import threading
 from dataclasses import dataclass, field
@@ -20,6 +21,7 @@ from enum import Enum
 from typing import AsyncIterator, Optional
 
 from dnd_manager.ai.base import (
+    AIError,
     AIMessage,
     AIProvider,
     AIRateLimitError,
@@ -29,6 +31,8 @@ from dnd_manager.ai.base import (
     ToolUseBlock,
     ToolResultBlock,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class QueryComplexity(str, Enum):
@@ -254,8 +258,11 @@ class GeminiRouter(AIProvider):
             else:
                 return QueryComplexity.SIMPLE
 
-        except Exception:
-            # On any error, default to moderate
+        except AIError as e:
+            logger.debug("Query classification failed: %s, defaulting to moderate", e)
+            return QueryComplexity.MODERATE
+        except (OSError, TimeoutError) as e:
+            logger.debug("Network error during classification: %s, defaulting to moderate", e)
             return QueryComplexity.MODERATE
 
     def _select_model(self, complexity: QueryComplexity) -> str:

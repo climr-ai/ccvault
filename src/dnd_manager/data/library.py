@@ -321,7 +321,7 @@ class HomebrewLibrary:
         self._user_id: Optional[str] = None
         try:
             self._init_db()
-        except Exception:
+        except sqlite3.Error:
             self.close()
             raise
 
@@ -351,7 +351,7 @@ class HomebrewLibrary:
                 conn.row_factory = sqlite3.Row
                 conn.execute("PRAGMA journal_mode=WAL")
                 self._conn = conn
-            except Exception:
+            except sqlite3.Error:
                 conn.close()
                 raise
         return self._conn

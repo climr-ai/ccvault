@@ -344,7 +344,7 @@ class SessionNotesStore:
         self._conn: Optional[sqlite3.Connection] = None
         try:
             self._init_db()
-        except Exception:
+        except sqlite3.Error:
             # Ensure connection is closed if init fails
             self.close()
             raise
@@ -370,7 +370,7 @@ class SessionNotesStore:
                 # Enable FTS5 for full-text search
                 conn.execute("PRAGMA journal_mode=WAL")
                 self._conn = conn
-            except Exception:
+            except sqlite3.Error:
                 conn.close()
                 raise
         return self._conn

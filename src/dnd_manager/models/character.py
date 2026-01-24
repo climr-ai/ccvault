@@ -58,6 +58,10 @@ class CharacterMeta(BaseModel):
     sync_id: Optional[str] = Field(default=None, description="Backend sync identifier")
     dashboard_layout: Optional[str] = Field(default=None, description="Per-character dashboard layout preset")
     dashboard_panels: Optional[list[str]] = Field(default=None, description="Per-character dashboard panels override")
+    panel_item_orders: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Per-character ordering for list-based dashboard panels",
+    )
 
 
 class CharacterClass(BaseModel):
@@ -104,6 +108,11 @@ class HitDice(BaseModel):
         return int(self.die[1:])
 
 
+def _die_size(die: str) -> int:
+    """Extract numeric die size from die string (e.g., 'd10' -> 10)."""
+    return int(die[1:])
+
+
 class HitDicePool(BaseModel):
     """Hit dice tracking for multiclass characters.
 
@@ -114,6 +123,10 @@ class HitDicePool(BaseModel):
     """
 
     pools: dict[str, HitDice] = Field(default_factory=dict)
+
+    def _sorted_dice_descending(self) -> list[str]:
+        """Return die types sorted by size descending (d12, d10, d8, d6)."""
+        return sorted(self.pools.keys(), key=_die_size, reverse=True)
 
     @property
     def total(self) -> int:
@@ -177,8 +190,7 @@ class HitDicePool(BaseModel):
         Returns:
             The die type spent (e.g., "d10"), or None if none available.
         """
-        # Sort by die size descending (d12, d10, d8, d6)
-        for die in sorted(self.pools.keys(), key=lambda d: int(d[1:]), reverse=True):
+        for die in self._sorted_dice_descending():
             if self.pools[die].remaining > 0:
                 self.pools[die].remaining -= 1
                 return die
@@ -199,8 +211,7 @@ class HitDicePool(BaseModel):
             return 0
 
         recovered = 0
-        # Recover larger dice first
-        for die in sorted(self.pools.keys(), key=lambda d: int(d[1:]), reverse=True):
+        for die in self._sorted_dice_descending():
             pool = self.pools[die]
             can_recover = min(count - recovered, pool.total - pool.remaining)
             pool.remaining += can_recover
@@ -219,7 +230,7 @@ class HitDicePool(BaseModel):
         if not self.pools:
             return "None"
         parts = []
-        for die in sorted(self.pools.keys(), key=lambda d: int(d[1:]), reverse=True):
+        for die in self._sorted_dice_descending():
             pool = self.pools[die]
             parts.append(f"{pool.remaining}/{pool.total}{die}")
         return " + ".join(parts)
@@ -240,8 +251,7 @@ class HitDicePool(BaseModel):
         """Convert to single HitDice (uses largest die type)."""
         if not self.pools:
             return HitDice()
-        # Use the largest die type for display
-        largest_die = max(self.pools.keys(), key=lambda d: int(d[1:]))
+        largest_die = max(self.pools.keys(), key=_die_size)
         return HitDice(
             total=self.total,
             remaining=self.remaining,
@@ -446,6 +456,8 @@ class InventoryItem(BaseModel):
     description: Optional[str] = Field(default=None)
     equipped: bool = Field(default=False)
     attuned: bool = Field(default=False)
+    held: Optional[str] = Field(default=None, description="main, off, two, or None")
+    bonded: bool = Field(default=False)
     custom_id: Optional[str] = Field(default=None, description="Reference to custom item")
 
 
@@ -533,6 +545,9 @@ class Character(BaseModel):
     # Features
     features: list[Feature] = Field(default_factory=list)
 
+    # Weapon mastery (2024)
+    weapon_masteries: list[str] = Field(default_factory=list)
+
     # Spellcasting
     spellcasting: Spellcasting = Field(default_factory=Spellcasting)
 
@@ -592,6 +607,25 @@ class Character(BaseModel):
         proficiency = self.proficiencies.get_skill_proficiency(skill)
         return calculate_skill_modifier(ability_mod, self.proficiency_bonus, proficiency)
 
+    def get_weapon_mastery_limit(self) -> int:
+        """Return the number of weapon masteries available for this character."""
+        if self.meta.ruleset != RulesetId.DND_2024:
+            return 0
+        from dnd_manager.data.weapon_mastery import get_weapon_mastery_limit_for_class
+
+        limits: list[int] = []
+        if self.primary_class:
+            limits.append(get_weapon_mastery_limit_for_class(self.primary_class.name, self.primary_class.level))
+        for mc in self.multiclass:
+            limits.append(get_weapon_mastery_limit_for_class(mc.name, mc.level))
+        return max(limits) if limits else 0
+
+    def can_use_weapon_mastery(self, weapon_name: str) -> bool:
+        """Check if the character has mastery enabled for a weapon."""
+        if self.get_weapon_mastery_limit() <= 0:
+            return False
+        return weapon_name in self.weapon_masteries
+
     def get_save_modifier(self, ability: Ability) -> int:
         """Calculate modifier for a saving throw."""
         ability_mod = self.abilities.get_modifier(ability)
@@ -621,6 +655,39 @@ class Character(BaseModel):
             return None
         ability_mod = self.abilities.get_modifier(self.spellcasting.ability)
         return self.spellcasting.get_spell_attack_bonus(ability_mod, self.proficiency_bonus)
+
+    def apply_equipment_effects(self) -> None:
+        """Apply equipment-derived combat stats (basic armor/shield AC)."""
+        from dnd_manager.data import get_armor_by_name
+
+        armor_item = None
+        shield_item = None
+        for item in self.equipment.items:
+            armor = get_armor_by_name(item.name)
+            if not armor or not item.equipped:
+                continue
+            if armor.armor_type.value == "Shield":
+                shield_item = armor
+            else:
+                armor_item = armor
+
+        dex_mod = self.abilities.get_modifier(Ability.DEXTERITY)
+        if armor_item:
+            base = armor_item.base_ac
+            if armor_item.armor_type.value == "Heavy":
+                dex_bonus = 0
+            elif armor_item.armor_type.value == "Medium":
+                dex_bonus = min(dex_mod, armor_item.max_dex_bonus or 0)
+            else:
+                dex_bonus = dex_mod
+            ac = base + dex_bonus
+        else:
+            ac = 10 + dex_mod
+
+        if shield_item:
+            ac += shield_item.base_ac
+
+        self.combat.armor_class = max(1, ac)
 
     def update_modified(self) -> None:
         """Update the modified timestamp."""

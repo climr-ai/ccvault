@@ -1,9 +1,12 @@
 """Ollama local AI provider."""
 
+import logging
 import os
 from typing import AsyncIterator, Optional
 
 from dnd_manager.ai.base import AIMessage, AIProvider, AIResponse, MessageRole
+
+logger = logging.getLogger(__name__)
 
 
 class OllamaProvider(AIProvider):
@@ -72,7 +75,8 @@ class OllamaProvider(AIProvider):
             response = await client.list()
             self._available_models = [m["name"] for m in response.get("models", [])]
             return self._available_models
-        except Exception:
+        except (OSError, TimeoutError, ConnectionError) as e:
+            logger.debug("Failed to fetch Ollama models: %s, using suggestions", e)
             return self.SUGGESTED_MODELS.copy()
 
     def is_configured(self) -> bool:
