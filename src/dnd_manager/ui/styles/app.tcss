@@ -60,7 +60,7 @@ Screen {
 }
 
 .top-row {
-    height: 12;
+    height: 13;
     width: 100%;
 }
 
