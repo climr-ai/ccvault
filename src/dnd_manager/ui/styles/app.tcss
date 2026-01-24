@@ -172,6 +172,10 @@ Screen {
     width: 28;
 }
 
+.hp-line {
+    background: transparent;
+}
+
 /* Actions Panel */
 .actions-panel {
     width: 1fr;
