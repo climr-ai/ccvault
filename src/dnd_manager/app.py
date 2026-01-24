@@ -2987,22 +2987,7 @@ class CombatStats(DashboardPanel):
         yield Static("COMBAT", classes="panel-title")
         yield Static(f"AC: {c.combat.total_ac}    Init: {c.get_initiative():+d}")
         yield Static(f"Speed: {c.combat.total_speed}ft")
-
-        # HP bar
-        hp_pct = hp.current / hp.maximum if hp.maximum > 0 else 0
-        bar_width = 16
-        filled = int(hp_pct * bar_width)
-        empty = bar_width - filled
-        bar_text = Text()
-        bar_text.append("HP: ", style="bold")
-        if filled:
-            bar_text.append("█" * filled, style="green")
-        if empty:
-            bar_text.append("░" * empty, style="grey37")
-        bar_text.append(f" {hp.current}/{hp.maximum}", style="white")
-        if hp.temporary:
-            bar_text.append(f" T:{hp.temporary}", style="cyan")
-        yield Static(bar_text)
+        yield Static(f"HP: {hp.current}/{hp.maximum} T:{hp.temporary}", classes="hp-line")
 
         yield Static(f"Hit Dice: {c.combat.get_hit_dice_display()}")
         yield Static(f"Prof Bonus: +{c.proficiency_bonus}")
