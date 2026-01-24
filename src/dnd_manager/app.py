@@ -2826,13 +2826,11 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
     def action_cancel(self) -> None:
         """Return to welcome screen."""
         self.app.pop_screen()
-        if self._return_to_dashboard:
+        if self._return_to_dashboard and not isinstance(self.app.screen, MainDashboard):
             if self.app.current_character:
-                if not isinstance(self.app.screen, MainDashboard):
-                    self.app.push_screen(MainDashboard(self.app.current_character))
-            else:
-                if not isinstance(self.app.screen, WelcomeScreen):
-                    self.app.push_screen(WelcomeScreen())
+                self.app.push_screen(MainDashboard(self.app.current_character))
+            elif not isinstance(self.app.screen, WelcomeScreen):
+                self.app.push_screen(WelcomeScreen())
 
     def action_new_character(self) -> None:
         """Create new character instead."""
@@ -8520,7 +8518,7 @@ class MainDashboard(ScreenContextMixin, Screen):
 
     BINDINGS = [
         Binding("escape", "back", "Back"),
-        Binding("q", "open_character", "Characters"),
+        Binding("q", "home", "Home"),
         Binding("?", "help", "Help"),
         Binding("v", "layout", "Layout"),
         Binding("s", "spells", "Spells"),
@@ -8651,7 +8649,14 @@ class MainDashboard(ScreenContextMixin, Screen):
 
     def action_back(self) -> None:
         """Return to the previous screen."""
-        self.app.action_open_character(return_to_dashboard=True)
+        self.app.pop_screen()
+
+    def action_home(self) -> None:
+        """Return to the welcome screen."""
+        while len(self.app.screen_stack) > 1 and not isinstance(self.app.screen, WelcomeScreen):
+            self.app.pop_screen()
+        if not isinstance(self.app.screen, WelcomeScreen):
+            self.app.push_screen(WelcomeScreen())
 
     def action_resume_draft(self) -> None:
         """Resume character creation draft."""
