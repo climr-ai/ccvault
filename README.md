@@ -17,33 +17,33 @@ A comprehensive CLI-based D&D 5e character manager supporting multiple rulesets 
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaredgiosinuff/dnd-manager/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/climr-ai/ccvault/main/install.sh | bash
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/jaredgiosinuff/dnd-manager/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/climr-ai/ccvault/main/install.ps1 | iex
 ```
 
 ### Manual Install
 
 ```bash
 # If you have uv installed:
-uv tool install git+https://github.com/jaredgiosinuff/dnd-manager
+uv tool install git+https://github.com/climr-ai/ccvault
 
 # Or with pipx:
-pipx install git+https://github.com/jaredgiosinuff/dnd-manager
+pipx install git+https://github.com/climr-ai/ccvault
 
 # With PDF export support (requires system dependencies):
-uv tool install "ccvault[pdf] @ git+https://github.com/jaredgiosinuff/dnd-manager"
+uv tool install "ccvault[pdf] @ git+https://github.com/climr-ai/ccvault"
 ```
 
 ### For Development
 
 ```bash
-git clone https://github.com/jaredgiosinuff/dnd-manager
-cd dnd-manager
+git clone https://github.com/climr-ai/ccvault
+cd ccvault
 uv sync
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
@@ -52,12 +52,12 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaredgiosinuff/dnd-manager/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/climr-ai/ccvault/main/uninstall.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/jaredgiosinuff/dnd-manager/main/uninstall.ps1 | iex
+irm https://raw.githubusercontent.com/climr-ai/ccvault/main/uninstall.ps1 | iex
 ```
 
 ## Usage
@@ -157,7 +157,7 @@ Kobold Press's 5e-compatible system:
 ## Project Structure
 
 ```
-dnd-manager/
+ccvault/
 ├── src/dnd_manager/
 │   ├── models/          # Data models (Character, Abilities, etc.)
 │   ├── rulesets/         # Ruleset implementations
