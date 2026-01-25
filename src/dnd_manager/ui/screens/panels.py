@@ -101,9 +101,9 @@ class DashboardPanel(VerticalScroll):
             # No selectable items - just scroll the pane content
             scroll_amount = 2  # Lines to scroll per key press
             if delta < 0:
-                self.scroll_up(scroll_amount)
+                self.scroll_y = max(0, self.scroll_y - scroll_amount)
             else:
-                self.scroll_down(scroll_amount)
+                self.scroll_y = self.scroll_y + scroll_amount
             return
         self.selected_index = max(0, min(len(items) - 1, self.selected_index + delta))
         await self.recompose()
