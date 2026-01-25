@@ -250,11 +250,12 @@ class MainDashboard(ScreenContextMixin, Screen):
 
     def action_back(self) -> None:
         """Return to welcome screen (escape from dashboard)."""
-        # Go to welcome screen instead of popping to potentially blank screen
         from dnd_manager.ui.screens.navigation import WelcomeScreen
+        # Pop this screen first
         self.app.pop_screen()
+        # If we're now on a blank/default screen, push WelcomeScreen
         if not isinstance(self.app.screen, WelcomeScreen):
-            self.app.switch_screen(WelcomeScreen())
+            self.app.push_screen(WelcomeScreen())
 
     def action_home(self) -> None:
         """Return to the welcome screen."""
