@@ -91,6 +91,20 @@ Screen {
     padding-bottom: 1;
 }
 
+.selected-row {
+    background: $primary-darken-2;
+}
+
+DashboardPanel:focus {
+    border: heavy $accent;
+    background: $primary 10%;
+}
+
+DashboardPanel:focus .panel-title {
+    color: $accent;
+    text-style: bold;
+}
+
 /* Ability Panel */
 .ability-panel {
     width: 20;
@@ -606,6 +620,27 @@ Footer {
     height: 100%;
 }
 
+.order-list {
+    height: 1fr;
+}
+
+.order-row {
+    padding: 0 1;
+}
+
+.order-row.selected {
+    background: $primary-darken-2;
+    color: $primary;
+}
+
+.bonus-row {
+    padding: 0 1;
+}
+
+.bonus-row.selected {
+    background: $primary-darken-2;
+}
+
 .spell-browser-list {
     height: 1fr;
 }
@@ -688,6 +723,19 @@ Footer {
 
 #detail-panel:focus {
     border: double $primary;
+}
+
+#detail-overlay-container {
+    align: center middle;
+    width: 80%;
+    height: 80%;
+    background: $surface-darken-1;
+    border: heavy $primary;
+    padding: 1;
+}
+
+#detail-overlay-body {
+    height: 1fr;
 }
 
 #detail-title {

@@ -111,6 +111,15 @@ from dnd_manager.data.balance import (
     get_homebrew_prompt,
 )
 
+from dnd_manager.data.weapon_mastery import (
+    WEAPON_MASTERY_BY_WEAPON,
+    WEAPON_MASTERY_PROPERTIES,
+    WEAPON_MASTERY_PROGRESSIONS,
+    get_weapon_mastery_for_weapon,
+    get_weapon_mastery_summary,
+    get_weapon_mastery_limit_for_class,
+)
+
 from dnd_manager.data.library import (
     ContentType,
     ContentStatus,

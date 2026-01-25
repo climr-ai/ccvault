@@ -158,8 +158,10 @@ class TestClickableListItem:
     def test_has_selected_message(self):
         """Test ClickableListItem has Selected message class."""
         assert hasattr(ClickableListItem, 'Selected')
-        msg = ClickableListItem.Selected(index=3)
+        item = ClickableListItem("test", 3)
+        msg = ClickableListItem.Selected(item=item, index=3)
         assert msg.index == 3
+        assert msg.control is item
 
 
 class TestStepTransitions:

@@ -459,6 +459,15 @@ class InventoryItem(BaseModel):
     held: Optional[str] = Field(default=None, description="main, off, two, or None")
     bonded: bool = Field(default=False)
     custom_id: Optional[str] = Field(default=None, description="Reference to custom item")
+    # Magic item properties
+    ac_bonus: int = Field(default=0, description="AC bonus when equipped (e.g., +1 armor)")
+    attack_bonus: int = Field(default=0, description="Attack/damage bonus (e.g., +1 weapon)")
+    requires_attunement: bool = Field(default=False, description="Whether item requires attunement")
+    rarity: Optional[str] = Field(default=None, description="Item rarity (common, uncommon, etc.)")
+    magical: bool = Field(default=False, description="Whether this is a magic item")
+    charges: Optional[int] = Field(default=None, description="Current charges if applicable")
+    max_charges: Optional[int] = Field(default=None, description="Maximum charges")
+    stat_bonuses: list["StatBonus"] = Field(default_factory=list, description="Stat bonuses when attuned/equipped")
 
 
 class Equipment(BaseModel):
@@ -657,19 +666,25 @@ class Character(BaseModel):
         return self.spellcasting.get_spell_attack_bonus(ability_mod, self.proficiency_bonus)
 
     def apply_equipment_effects(self) -> None:
-        """Apply equipment-derived combat stats (basic armor/shield AC)."""
+        """Apply equipment-derived combat stats (armor, shield, magic item bonuses)."""
         from dnd_manager.data import get_armor_by_name
 
         armor_item = None
+        armor_inv_item = None
         shield_item = None
+        shield_inv_item = None
         for item in self.equipment.items:
+            if not item.equipped:
+                continue
             armor = get_armor_by_name(item.name)
-            if not armor or not item.equipped:
+            if not armor:
                 continue
             if armor.armor_type.value == "Shield":
                 shield_item = armor
+                shield_inv_item = item
             else:
                 armor_item = armor
+                armor_inv_item = item
 
         dex_mod = self.abilities.get_modifier(Ability.DEXTERITY)
         if armor_item:
@@ -681,13 +696,84 @@ class Character(BaseModel):
             else:
                 dex_bonus = dex_mod
             ac = base + dex_bonus
+            # Add magic armor bonus (e.g., +1, +2, +3 armor)
+            if armor_inv_item:
+                ac += armor_inv_item.ac_bonus
         else:
             ac = 10 + dex_mod
 
         if shield_item:
             ac += shield_item.base_ac
+            # Add magic shield bonus (e.g., +1, +2, +3 shield)
+            if shield_inv_item:
+                ac += shield_inv_item.ac_bonus
+
+        # Add AC bonus from other equipped items (Ring of Protection, Cloak of Protection, etc.)
+        for item in self.equipment.items:
+            if not item.equipped:
+                continue
+            # Skip armor/shield - already handled above
+            armor = get_armor_by_name(item.name)
+            if armor:
+                continue
+            # Only apply AC bonus if attuned (if attunement required) or if no attunement needed
+            if item.ac_bonus and (not item.requires_attunement or item.attuned):
+                ac += item.ac_bonus
 
         self.combat.armor_class = max(1, ac)
+
+    def apply_stat_bonuses(self) -> None:
+        """Apply stat bonuses from character stat_bonuses and equipped items to ability scores.
+
+        This resets all ability score bonuses/overrides and recalculates from:
+        1. Character-level stat_bonuses list
+        2. Stat bonuses from equipped/attuned items
+        """
+        # Reset all ability score bonuses and overrides
+        for ability in Ability:
+            score = self.abilities.get(ability)
+            score.bonus = 0
+            score.override = None
+
+        # Collect all active stat bonuses
+        all_bonuses: list[StatBonus] = list(self.stat_bonuses)
+
+        # Add bonuses from equipped items that are attuned (if required)
+        for item in self.equipment.items:
+            if not item.equipped:
+                continue
+            # Only apply if attuned (when required) or no attunement needed
+            if item.requires_attunement and not item.attuned:
+                continue
+            all_bonuses.extend(item.stat_bonuses)
+
+        # Apply bonuses - overrides take precedence, then sum additive bonuses
+        overrides: dict[str, int] = {}
+        additive: dict[str, int] = {}
+
+        for bonus in all_bonuses:
+            ability_key = bonus.ability.lower()
+            if bonus.is_override and bonus.override_value is not None:
+                # Override: take the highest override value
+                current = overrides.get(ability_key, 0)
+                overrides[ability_key] = max(current, bonus.override_value)
+            else:
+                # Additive: sum up bonuses
+                additive[ability_key] = additive.get(ability_key, 0) + bonus.bonus
+
+        # Apply to ability scores
+        for ability in Ability:
+            score = self.abilities.get(ability)
+            ability_key = ability.value.lower()
+            if ability_key in overrides:
+                score.override = overrides[ability_key]
+            if ability_key in additive:
+                score.bonus = additive[ability_key]
+
+    def apply_all_effects(self) -> None:
+        """Apply all equipment and stat bonus effects. Call after loading or modifying equipment."""
+        self.apply_stat_bonuses()
+        self.apply_equipment_effects()
 
     def update_modified(self) -> None:
         """Update the modified timestamp."""
