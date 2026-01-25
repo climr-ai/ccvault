@@ -98,6 +98,12 @@ class DashboardPanel(VerticalScroll):
     async def move_selection(self, delta: int) -> None:
         items = self.get_items()
         if not items:
+            # No selectable items - just scroll the pane content
+            scroll_amount = 2  # Lines to scroll per key press
+            if delta < 0:
+                self.scroll_up(scroll_amount)
+            else:
+                self.scroll_down(scroll_amount)
             return
         self.selected_index = max(0, min(len(items) - 1, self.selected_index + delta))
         await self.recompose()
