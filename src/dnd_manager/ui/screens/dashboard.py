@@ -222,6 +222,18 @@ class MainDashboard(ScreenContextMixin, Screen):
             # Widget may not be mounted or focusable
             pass
 
+    def on_descendant_focus(self, event) -> None:
+        """Sync _pane_focus_index when any pane receives focus (via Tab, click, etc.)."""
+        if not getattr(self, "_pane_order", None):
+            return
+        # Find which pane received focus
+        focused = event.widget
+        # Walk up to find the DashboardPanel
+        while focused and not isinstance(focused, DashboardPanel):
+            focused = focused.parent
+        if focused and focused in self._pane_order:
+            self._pane_focus_index = self._pane_order.index(focused)
+
     def action_save(self) -> None:
         """Save the current character."""
         self.app.save_character()
