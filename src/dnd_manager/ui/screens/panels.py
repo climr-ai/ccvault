@@ -101,6 +101,16 @@ class DashboardPanel(VerticalScroll):
             return
         self.selected_index = max(0, min(len(items) - 1, self.selected_index + delta))
         await self.recompose()
+        # Scroll to keep the selected item visible
+        self._scroll_to_selected()
+
+    def _scroll_to_selected(self) -> None:
+        """Scroll to keep the selected item visible in the viewport."""
+        # Find clickable items (those with selection markers)
+        clickable_items = list(self.query(ClickableListItem))
+        if self.selected_index < len(clickable_items):
+            selected_widget = clickable_items[self.selected_index]
+            self.scroll_to_center(selected_widget, animate=False)
 
 
 class AbilityBlock(DashboardPanel):
