@@ -275,17 +275,17 @@ class MainDashboard(ScreenContextMixin, Screen):
         next_index = (self._pane_focus_index - 1) % len(self._pane_order)
         self._focus_pane(next_index)
 
-    def action_pane_up(self) -> None:
+    async def action_pane_up(self) -> None:
         """Move selection up within focused pane."""
         pane = self._pane_order[self._pane_focus_index] if getattr(self, "_pane_order", None) else None
         if pane:
-            pane.move_selection(-1)
+            await pane.move_selection(-1)
 
-    def action_pane_down(self) -> None:
+    async def action_pane_down(self) -> None:
         """Move selection down within focused pane."""
         pane = self._pane_order[self._pane_focus_index] if getattr(self, "_pane_order", None) else None
         if pane:
-            pane.move_selection(1)
+            await pane.move_selection(1)
 
     def action_pane_select(self) -> None:
         """Open detail overlay for selected item or trigger quick action."""

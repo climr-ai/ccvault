@@ -75,14 +75,15 @@ class DashboardPanel(VerticalScroll):
         """Handle mouse selection within the panel."""
         self.selected_index = event.index
         self.focus()
-        self.refresh(layout=True)
+        # Don't recompose on click - it would destroy widgets before Activated message bubbles.
+        # Visual marker update happens on arrow key navigation or next compose.
         event.stop()
 
     def on_clickable_list_item_activated(self, event: ClickableListItem.Activated) -> None:
-        """Handle mouse activation within the panel."""
+        """Handle mouse activation within the panel (double-click opens detail)."""
         self.selected_index = event.index
         self.focus()
-        self.refresh(layout=True)
+        # Don't stop - let it bubble up to MainDashboard to open DetailOverlay.
 
     def get_items(self) -> list:
         """Return selectable items for this panel."""
@@ -94,12 +95,12 @@ class DashboardPanel(VerticalScroll):
             return None
         return items[min(self.selected_index, len(items) - 1)]
 
-    def move_selection(self, delta: int) -> None:
+    async def move_selection(self, delta: int) -> None:
         items = self.get_items()
         if not items:
             return
         self.selected_index = max(0, min(len(items) - 1, self.selected_index + delta))
-        self.refresh(layout=True)
+        await self.recompose()
 
 
 class AbilityBlock(DashboardPanel):
