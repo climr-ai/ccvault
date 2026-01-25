@@ -270,6 +270,7 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
         Binding("q", "cancel", "Cancel"),
+        Binding("enter", "open", "Open"),
         Binding("n", "new_character", "New Character"),
         Binding("d", "delete_character", "Delete Character"),
     ]
@@ -384,8 +385,8 @@ class CharacterSelectScreen(ListNavigationMixin, Screen):
         """Move selection down."""
         self._navigate_down()
 
-    def key_enter(self) -> None:
-        """Select the current character."""
+    def action_open(self) -> None:
+        """Select and open the current character."""
         if self.characters:
             char_info = self.characters[self.selected_index]
             self.app.load_character(char_info["path"])
