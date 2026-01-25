@@ -162,6 +162,7 @@ class MainDashboard(ScreenContextMixin, Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield Static(self.character.name, id="character-title", classes="character-title")
         yield Container(
             *self._build_dashboard_rows(),
             id="dashboard",
@@ -248,8 +249,12 @@ class MainDashboard(ScreenContextMixin, Screen):
         self.app.action_open_character(return_to_dashboard=True)
 
     def action_back(self) -> None:
-        """Return to the previous screen."""
+        """Return to welcome screen (escape from dashboard)."""
+        # Go to welcome screen instead of popping to potentially blank screen
+        from dnd_manager.ui.screens.navigation import WelcomeScreen
         self.app.pop_screen()
+        if not isinstance(self.app.screen, WelcomeScreen):
+            self.app.switch_screen(WelcomeScreen())
 
     def action_home(self) -> None:
         """Return to the welcome screen."""

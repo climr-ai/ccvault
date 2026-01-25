@@ -312,7 +312,14 @@ Check your version: Displayed on the welcome screen.
 
 ## License
 
-MIT
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+This means:
+- You can use, modify, and distribute the software freely
+- If you modify and distribute it (including as a network service), you must share your source code under the same license
+- Commercial use requires the same open-source obligations
+
+**Commercial Licensing:** If you need a commercial license that doesn't require open-sourcing your modifications, please contact the author to discuss licensing options.
 
 ## Acknowledgments
 

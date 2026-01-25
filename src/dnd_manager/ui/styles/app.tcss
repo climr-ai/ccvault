@@ -52,6 +52,16 @@ Screen {
     margin: 0 1;
 }
 
+/* Character Title Bar */
+.character-title {
+    text-align: center;
+    text-style: bold;
+    color: $primary;
+    background: $surface-darken-1;
+    padding: 0 1;
+    width: 100%;
+}
+
 /* Dashboard Layout */
 #dashboard {
     width: 100%;
