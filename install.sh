@@ -1,6 +1,6 @@
 #!/bin/bash
 # CCVault Installer - D&D Character Manager
-# One-line install: curl -fsSL https://raw.githubusercontent.com/jaredgiosinuff/dnd-manager/main/install.sh | bash
+# One-line install: curl -fsSL https://raw.githubusercontent.com/climr-ai/ccvault/main/install.sh | bash
 
 set -e
 
@@ -100,7 +100,7 @@ step "Installing CCVault..."
 uv tool uninstall ccvault 2>/dev/null || true
 
 # Install from GitHub
-if uv tool install "git+https://github.com/jaredgiosinuff/dnd-manager"; then
+if uv tool install "git+https://github.com/climr-ai/ccvault"; then
     success "CCVault installed successfully"
 else
     error "Failed to install CCVault"
