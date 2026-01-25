@@ -133,6 +133,7 @@ class MainDashboard(ScreenContextMixin, Screen):
     def __init__(self, character: "Character", **kwargs) -> None:
         super().__init__(**kwargs)
         self.character = character
+        self._pane_focus_index = 0
 
     def get_ai_context(self) -> dict:
         """Provide character context for AI."""
