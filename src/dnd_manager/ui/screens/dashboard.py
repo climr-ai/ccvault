@@ -1261,9 +1261,19 @@ class DetailOverlay(ModalScreen):
     def action_toggle_attuned(self) -> None:
         if not hasattr(self.item, "attuned"):
             return
+        # Only allow attuning items that require attunement
+        if not getattr(self.item, "requires_attunement", False):
+            self.notify("This item does not require attunement.", severity="warning")
+            return
+        # Check attunement limit before attuning
+        if not self.item.attuned:
+            current_attuned = sum(1 for i in self.character.equipment.items if i.attuned and i is not self.item)
+            if current_attuned >= 3:
+                self.notify("Attunement limit reached (3 items).", severity="warning")
+                return
         self.item.attuned = not self.item.attuned
-        if self.item.attuned and self.character.equipment.attuned_count > 3:
-            self.notify("Attunement limit exceeded (3).", severity="warning")
+        # Reapply effects since attunement affects AC bonuses and stat bonuses
+        self.character.apply_equipment_effects()
         self._dirty = True
         self._refresh()
 
