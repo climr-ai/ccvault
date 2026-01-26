@@ -486,27 +486,20 @@ class WeaponsPane(DashboardPanel):
             prof_label = "" if proficient else " (no prof)"
             yield Static(f"  {attack_bonus:+d} to hit{prof_label}, {damage} {weapon.damage_type}")
 
-            detail_parts = []
+            # Build compact info line: Range, Versatile damage, Mastery
+            info_parts = []
             if range_text:
-                detail_parts.append(range_text)
-            if weapon.properties:
-                detail_parts.append("Properties: " + ", ".join(weapon.properties))
+                info_parts.append(range_text)
             if versatile:
-                detail_parts.append(f"Versatile {self._format_damage(versatile, ability_mod)}")
-            if detail_parts:
-                yield Static("  " + " • ".join(detail_parts))
-
+                info_parts.append(f"Versatile ({self._format_damage(versatile, ability_mod + magic_bonus)})")
+            # Check for mastery
             mastery = None
             if self.character.meta.ruleset == RulesetId.DND_2024 and self.character.can_use_weapon_mastery(weapon.name):
                 mastery = get_weapon_mastery_for_weapon(weapon.name)
             if mastery:
-                summary = get_weapon_mastery_summary(mastery) or ""
-                if summary:
-                    yield Static(f"  Mastery: {mastery} — {summary}")
-                else:
-                    yield Static(f"  Mastery: {mastery}")
-
-            yield Static(f"  {self._weapon_description(weapon)}")
+                info_parts.append(mastery)
+            if info_parts:
+                yield Static("  " + " • ".join(info_parts))
 
     def get_items(self) -> list:
         return getattr(self, "_weapons_cache", [])
