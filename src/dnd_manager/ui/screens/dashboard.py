@@ -57,36 +57,30 @@ PANE_DEFS = {
     "actions": ("Actions", ActionsPane, "panel skills-panel"),
 }
 
-# Layout presets with 3 rows: top (8 lines), middle (14 lines), bottom (remaining)
+# Layout presets with 3 rows
 DASHBOARD_LAYOUT_PRESETS = {
-    "balanced": {
-        "label": "Balanced",
+    "standard": {
+        "label": "Standard",
         "rows": [
-            ["abilities", "character", "combat", "shortcuts"],
-            ["skills", "spell_slots", "prepared_spells"],
+            ["character", "abilities", "combat", "shortcuts"],
+            ["skills", "weapons", "armor"],
+            ["feats", "inventory"],
         ],
     },
     "spellcaster": {
         "label": "Spellcaster",
         "rows": [
-            ["abilities", "character", "combat", "shortcuts"],
-            ["skills", "spell_slots", "known_spells"],
+            ["character", "abilities", "combat", "shortcuts"],
+            ["skills", "weapons", "armor"],
+            ["feats", "inventory", "spell_slots", "prepared_spells"],
         ],
     },
     "martial": {
         "label": "Martial",
         "rows": [
-            ["abilities", "character", "combat", "shortcuts"],
-            ["weapons", "armor", "feats"],
-            ["skills", "inventory"],
-        ],
-    },
-    "compact": {
-        "label": "Compact",
-        "rows": [
-            ["abilities", "character", "combat", "shortcuts"],
-            ["weapons", "armor"],
-            ["skills", "feats"],
+            ["character", "abilities", "combat", "shortcuts"],
+            ["skills", "weapons", "armor"],
+            ["feats", "inventory"],
         ],
     },
 }
@@ -199,7 +193,7 @@ class MainDashboard(ScreenContextMixin, Screen):
         if layout_name in DASHBOARD_LAYOUT_PRESETS:
             rows = DASHBOARD_LAYOUT_PRESETS[layout_name]["rows"]
         else:
-            panels = panels or DASHBOARD_LAYOUT_PRESETS["balanced"]["rows"][0] + DASHBOARD_LAYOUT_PRESETS["balanced"]["rows"][1]
+            panels = panels or DASHBOARD_LAYOUT_PRESETS["standard"]["rows"][0] + DASHBOARD_LAYOUT_PRESETS["standard"]["rows"][1]
             rows = [panels[:4], panels[4:8]]
 
         row_widgets: list[Horizontal] = []

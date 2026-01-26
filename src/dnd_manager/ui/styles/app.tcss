@@ -69,9 +69,9 @@ Screen {
     padding: 1;
 }
 
-/* Dashboard row heights: top (8 lines), middle (14 lines), bottom (remaining) */
+/* Dashboard row heights */
 .top-row {
-    height: 11;
+    height: 13;
     width: 100%;
 }
 

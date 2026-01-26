@@ -184,26 +184,19 @@ class CharacterInfo(DashboardPanel):
             class_info += f" ({c.primary_class.subclass})"
         yield Static(class_info)
 
-        # Species/Race (use ruleset terminology)
-        species_term = c.get_species_term()
+        # Species/Race - just the name, no label
         if c.species:
             species_info = c.species
             if c.subspecies:
                 species_info += f" ({c.subspecies})"
-            yield Static(f"{species_term}: {species_info}")
-        else:
-            yield Static(f"{species_term}: Not selected")
+            yield Static(species_info)
 
-        # Background
+        # Background - just the name
         if c.background:
-            yield Static(f"Background: {c.background}")
+            yield Static(c.background)
 
         # Alignment
-        yield Static(f"Alignment: {c.alignment.display_name}")
-
-        # Ruleset indicator
-        if ruleset:
-            yield Static(f"Ruleset: {ruleset.name}", classes="ruleset-info")
+        yield Static(c.alignment.display_name)
 
 
 class CombatStats(DashboardPanel):
