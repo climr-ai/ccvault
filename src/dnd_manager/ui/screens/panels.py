@@ -191,12 +191,12 @@ class CharacterInfo(DashboardPanel):
                 species_info += f" ({c.subspecies})"
             yield Static(species_info)
 
-        # Background - just the name
+        # Background (abbreviated)
         if c.background:
-            yield Static(c.background)
+            yield Static(f"BG: {c.background}")
 
-        # Alignment
-        yield Static(c.alignment.display_name)
+        # Alignment (abbreviated)
+        yield Static(f"AL: {c.alignment.display_name}")
 
 
 class CombatStats(DashboardPanel):
