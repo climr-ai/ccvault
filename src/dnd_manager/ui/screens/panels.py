@@ -577,6 +577,55 @@ class InventoryPane(DashboardPanel):
         return getattr(self, "_inventory_cache", [])
 
 
+class ArmorPane(DashboardPanel):
+    """Widget displaying armor and shields."""
+
+    def __init__(self, character: Optional[Character] = None, **kwargs) -> None:
+        super().__init__(character=character, **kwargs)
+
+    def compose(self) -> ComposeResult:
+        from dnd_manager.data import get_armor_by_name
+
+        yield Static("ARMOR", classes="panel-title")
+        items = self.character.equipment.items
+        armor_items = []
+        for item in items:
+            armor = get_armor_by_name(item.name)
+            if armor:
+                armor_items.append((item, armor))
+        armor_items = apply_item_order(
+            armor_items,
+            self.character.meta.panel_item_orders.get("armor"),
+            lambda x: x[0].name,
+        )
+        self._armor_cache = [x[0] for x in armor_items]
+
+        if not armor_items:
+            yield Static("No armor", classes="empty-state")
+            return
+
+        for index, (item, armor) in enumerate(armor_items):
+            selected = "▶" if index == self.selected_index else " "
+            equipped_marker = "★" if item.equipped else " "
+            # Calculate AC with bonuses
+            base_ac = armor.base_ac
+            magic_bonus = item.ac_bonus if hasattr(item, 'ac_bonus') else 0
+            total_ac = base_ac + magic_bonus
+            # Magic label
+            magic_label = f" +{magic_bonus}" if magic_bonus > 0 else ""
+            yield ClickableListItem(
+                f"{selected} {equipped_marker} {item.name}{magic_label}",
+                index=index,
+                classes="selected-row" if selected == "▶" else "",
+            )
+            # AC info
+            ac_str = f"AC {total_ac}" if magic_bonus == 0 else f"AC {base_ac}+{magic_bonus}={total_ac}"
+            yield Static(f"  {ac_str} ({armor.armor_type.value})")
+
+    def get_items(self) -> list:
+        return getattr(self, "_armor_cache", [])
+
+
 class ActionsPane(DashboardPanel):
     """Widget displaying actionable features."""
 

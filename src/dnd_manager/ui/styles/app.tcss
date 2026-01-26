@@ -69,8 +69,14 @@ Screen {
     padding: 1;
 }
 
+/* Dashboard row heights: top (8 lines), middle (14 lines), bottom (remaining) */
 .top-row {
-    height: 13;
+    height: 11;
+    width: 100%;
+}
+
+.middle-row {
+    height: 16;
     width: 100%;
 }
 
@@ -79,9 +85,22 @@ Screen {
     width: 100%;
 }
 
-.wide-row {
+/* For 2-row layouts, second row spans middle+bottom space */
+.span-row {
     height: 1fr;
     width: 100%;
+}
+
+/* Weapons pane - compact to show ~3 weapons */
+.weapons-panel {
+    width: 1fr;
+    max-height: 16;
+}
+
+/* Armor pane - compact */
+.armor-panel {
+    width: 1fr;
+    max-height: 16;
 }
 
 /* Panel styles */

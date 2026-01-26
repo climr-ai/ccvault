@@ -20,6 +20,7 @@ from dnd_manager.ui.screens.base import ListNavigationMixin, ScreenContextMixin,
 from dnd_manager.ui.screens.panels import (
     AbilityBlock,
     ActionsPane,
+    ArmorPane,
     CharacterInfo,
     CombatStats,
     DashboardPanel,
@@ -49,12 +50,14 @@ PANE_DEFS = {
     "spell_slots": ("Spell Slots", SpellSlots, "panel spells-panel"),
     "prepared_spells": ("Prepared Spells", PreparedSpells, "panel prepared-panel"),
     "known_spells": ("Known Spells", KnownSpells, "panel prepared-panel"),
-    "weapons": ("Weapons", WeaponsPane, "panel skills-panel"),
+    "weapons": ("Weapons", WeaponsPane, "panel weapons-panel"),
+    "armor": ("Armor", ArmorPane, "panel armor-panel"),
     "feats": ("Feats", FeatsPane, "panel skills-panel"),
     "inventory": ("Inventory", InventoryPane, "panel skills-panel"),
     "actions": ("Actions", ActionsPane, "panel skills-panel"),
 }
 
+# Layout presets with 3 rows: top (8 lines), middle (14 lines), bottom (remaining)
 DASHBOARD_LAYOUT_PRESETS = {
     "balanced": {
         "label": "Balanced",
@@ -74,20 +77,23 @@ DASHBOARD_LAYOUT_PRESETS = {
         "label": "Martial",
         "rows": [
             ["abilities", "character", "combat", "shortcuts"],
-            ["skills", "weapons", "feats"],
+            ["weapons", "armor", "feats"],
+            ["skills", "inventory"],
         ],
     },
-    "wide": {
-        "label": "Wide",
+    "compact": {
+        "label": "Compact",
         "rows": [
-            ["abilities", "character", "combat", "shortcuts", "skills"],
-            ["weapons", "feats", "inventory", "spell_slots", "prepared_spells"],
+            ["abilities", "character", "combat", "shortcuts"],
+            ["weapons", "armor"],
+            ["skills", "feats"],
         ],
     },
 }
 
 ORDERABLE_PANELS = {
     "weapons": "Weapons",
+    "armor": "Armor",
     "skills": "Skills",
     "feats": "Feats",
     "inventory": "Inventory",
@@ -179,7 +185,13 @@ class MainDashboard(ScreenContextMixin, Screen):
         return layout, panels
 
     def _build_dashboard_rows(self) -> list[Horizontal]:
-        """Build dashboard rows based on layout settings."""
+        """Build dashboard rows based on layout settings.
+
+        Supports up to 3 rows:
+        - Row 0 (top): 8 lines - stats overview
+        - Row 1 (middle): 14 lines - main content
+        - Row 2 (bottom): remaining space - additional content
+        """
         layout_name, panels = self._get_layout_state()
         if panels:
             layout_name = "custom"
@@ -192,6 +204,8 @@ class MainDashboard(ScreenContextMixin, Screen):
 
         row_widgets: list[Horizontal] = []
         self._pane_order: list[DashboardPanel] = []
+        row_classes = ["top-row", "middle-row", "bottom-row"]
+
         for idx, row in enumerate(rows):
             widgets = []
             for pane_id in row:
@@ -202,9 +216,14 @@ class MainDashboard(ScreenContextMixin, Screen):
                 pane = pane_cls(character=self.character, pane_id=pane_id, classes=pane_classes)
                 widgets.append(pane)
                 self._pane_order.append(pane)
-            row_class = "top-row" if idx == 0 else "bottom-row"
-            if layout_name == "wide":
-                row_class = "wide-row"
+            # Assign row class based on position
+            if idx < len(row_classes):
+                row_class = row_classes[idx]
+            else:
+                row_class = "bottom-row"
+            # For 2-row layouts, second row is "bottom-row" spanning middle+bottom
+            if len(rows) == 2 and idx == 1:
+                row_class = "span-row"
             row_widgets.append(Horizontal(*widgets, classes=row_class))
         return row_widgets
 
