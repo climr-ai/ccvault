@@ -1200,8 +1200,8 @@ class DetailOverlay(ModalScreen):
 
         body.mount(Static(""))
         body.mount(Static("— Actions —", classes="hint"))
-        body.mount(Static("[E]quip [A]ttune [B]ond [1][2][3]Hold [M]agic [R]eq.Attune"))
-        body.mount(Static("[+/-]AC  []/[]Atk  [C]harge  [S]tat Bonuses  [H]P"))
+        body.mount(Static("\\[E]quip \\[A]ttune \\[B]ond \\[1]\\[2]\\[3]Hold \\[M]agic \\[R]eq.Attune"))
+        body.mount(Static("\\[+/-]AC  \\[\\]/\\[\\]Atk  \\[C]harge  \\[S]tat Bonuses  \\[H]P"))
 
     def _render_skill(self, body: VerticalScroll) -> None:
         from dnd_manager.models.abilities import SKILL_ABILITY_MAP
