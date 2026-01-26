@@ -1267,7 +1267,8 @@ class DetailOverlay(ModalScreen):
         if not hasattr(self.item, "equipped"):
             return
         self.item.equipped = not self.item.equipped
-        self.character.apply_equipment_effects()
+        # Apply all effects (equipment + stat bonuses)
+        self.character.apply_all_effects()
         self._dirty = True
         self._refresh()
 

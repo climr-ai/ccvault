@@ -206,6 +206,8 @@ class CombatStats(DashboardPanel):
         super().__init__(character=character, **kwargs)
 
     def compose(self) -> ComposeResult:
+        from dnd_manager.models.abilities import Ability
+
         c = self.character
         hp = c.combat.hit_points
 
@@ -221,7 +223,19 @@ class CombatStats(DashboardPanel):
         if c.spellcasting.ability:
             dc = c.get_spell_save_dc()
             atk = c.get_spell_attack_bonus()
-            yield Static(f"Spell DC: {dc}  Atk: +{atk}")
+            yield Static(f"Spell DC: {dc}  Atk: {atk:+d}")
+
+        # Saving Throws - compact display
+        save_parts = []
+        for ability in Ability:
+            abbrev = ability.value[:3].upper()
+            mod = c.abilities.get_modifier(ability)
+            is_prof = ability in c.proficiencies.saving_throws
+            total = mod + (c.proficiency_bonus if is_prof else 0)
+            marker = "●" if is_prof else "○"
+            save_parts.append(f"{marker}{abbrev}{total:+d}")
+        yield Static(" ".join(save_parts[:3]))  # STR DEX CON
+        yield Static(" ".join(save_parts[3:]))  # INT WIS CHA
 
 
 class QuickActions(DashboardPanel):
@@ -443,7 +457,7 @@ class WeaponsPane(DashboardPanel):
             if not weapon:
                 continue
             equipped = True if item.equipped else False
-            marker = "★" if equipped else " "
+            marker = "●" if equipped else " "
             qty = f"x{item.quantity}" if item.quantity > 1 else ""
             selected = "▶" if index == self.selected_index else " "
             proficient = self._is_weapon_proficient(weapon)
@@ -465,7 +479,8 @@ class WeaponsPane(DashboardPanel):
             if item.bonded:
                 status.append("B")
             if item.held:
-                status.append(item.held[0].upper())
+                held_map = {"main": "PH", "off": "OH", "both": "BH"}
+                status.append(held_map.get(item.held, item.held[0].upper()))
             status_text = f"[{''.join(status)}]" if status else ""
             # Show magic bonus in item name
             magic_label = ""
@@ -546,19 +561,19 @@ class InventoryPane(DashboardPanel):
             yield Static("No items", classes="empty-state")
         for index, item in enumerate(items):
             selected = "▶" if index == self.selected_index else " "
+            equipped_marker = "●" if item.equipped else " "
             qty = f"x{item.quantity}" if item.quantity > 1 else ""
             status = []
-            if item.equipped:
-                status.append("E")
             if item.attuned:
                 status.append("A")
             if item.bonded:
                 status.append("B")
             if item.held:
-                status.append(item.held[0].upper())
+                held_map = {"main": "PH", "off": "OH", "both": "BH"}
+                status.append(held_map.get(item.held, item.held[0].upper()))
             status_text = f"[{''.join(status)}]" if status else ""
             yield ClickableListItem(
-                f"{selected} {item.name} {qty} {status_text}".strip(),
+                f"{selected} {equipped_marker} {item.name} {qty} {status_text}".strip(),
                 index=index,
                 classes="selected-row" if selected == "▶" else "",
             )
@@ -599,7 +614,7 @@ class ArmorPane(DashboardPanel):
 
         for index, (item, armor) in enumerate(armor_items):
             selected = "▶" if index == self.selected_index else " "
-            equipped_marker = "★" if item.equipped else " "
+            equipped_marker = "●" if item.equipped else " "
             # Calculate AC with bonuses
             base_ac = armor.base_ac
             magic_bonus = item.ac_bonus if hasattr(item, 'ac_bonus') else 0
