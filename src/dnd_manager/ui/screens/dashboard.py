@@ -1116,10 +1116,56 @@ class DetailOverlay(ModalScreen):
 
         if weapon:
             body.mount(Static(""))
-            damage_str = f"{weapon.damage} {weapon.damage_type}"
-            if item.attack_bonus:
-                damage_str += f" (+{item.attack_bonus} bonus)"
-            body.mount(Static(f"Damage: {damage_str}"))
+            body.mount(Static("— Attack & Damage Breakdown —", classes="hint"))
+
+            # Calculate ability modifier
+            str_mod = self.character.abilities.strength.modifier
+            dex_mod = self.character.abilities.dexterity.modifier
+            if "Finesse" in weapon.properties:
+                ability_mod = max(str_mod, dex_mod)
+                ability_name = "STR" if str_mod >= dex_mod else "DEX"
+            elif "Ranged" in weapon.category:
+                ability_mod = dex_mod
+                ability_name = "DEX"
+            else:
+                ability_mod = str_mod
+                ability_name = "STR"
+
+            # Check proficiency
+            from dnd_manager.ui.screens.panels import is_weapon_proficient
+            proficient = is_weapon_proficient(self.character, weapon)
+            prof_bonus = self.character.proficiency_bonus if proficient else 0
+
+            # Magic bonus
+            magic_bonus = item.attack_bonus if hasattr(item, 'attack_bonus') else 0
+
+            # Total attack bonus
+            total_attack = ability_mod + prof_bonus + magic_bonus
+
+            # Build attack breakdown string
+            attack_parts = [f"{ability_name} {ability_mod:+d}"]
+            if proficient:
+                attack_parts.append(f"Prof +{prof_bonus}")
+            else:
+                attack_parts.append("(no proficiency)")
+            if magic_bonus:
+                attack_parts.append(f"Magic +{magic_bonus}")
+            body.mount(Static(f"Attack: {total_attack:+d} = {' + '.join(p for p in attack_parts if not p.startswith('('))}"))
+            if not proficient:
+                body.mount(Static("  (not proficient with this weapon)", classes="hint"))
+
+            # Damage breakdown
+            damage_mod = ability_mod + magic_bonus
+            if damage_mod != 0:
+                damage_str = f"{weapon.damage}{damage_mod:+d}"
+            else:
+                damage_str = weapon.damage
+            damage_parts = [f"{ability_name} {ability_mod:+d}"]
+            if magic_bonus:
+                damage_parts.append(f"Magic +{magic_bonus}")
+            body.mount(Static(f"Damage: {damage_str} {weapon.damage_type} = {weapon.damage} + {' + '.join(damage_parts)}"))
+
+            body.mount(Static(""))
             if weapon.properties:
                 body.mount(Static("Properties: " + ", ".join(weapon.properties)))
             if weapon.range_normal:
