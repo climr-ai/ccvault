@@ -108,6 +108,8 @@ Screen {
     border: solid $primary;
     padding: 1;
     margin: 0 1 1 0;
+    height: 100%;
+    overflow-y: auto;
 }
 
 .panel:focus {
@@ -122,6 +124,13 @@ Screen {
 
 .selected-row {
     background: $primary-darken-2;
+}
+
+/* DashboardPanel (VerticalScroll) - ensure scrolling works */
+DashboardPanel {
+    height: 100%;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
 }
 
 DashboardPanel:focus {
@@ -227,8 +236,6 @@ DashboardPanel:focus .panel-title {
 /* Skills Panel */
 .skills-panel {
     width: 40;
-    height: 100%;
-    overflow-y: auto;
 }
 
 .skill-row {
