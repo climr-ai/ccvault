@@ -84,6 +84,31 @@ def create_parser() -> argparse.ArgumentParser:
         help="Export format (default: md)",
     )
 
+    # Import command (PDF character import)
+    import_parser = subparsers.add_parser("import", help="Import character from PDF")
+    import_parser.add_argument("file", type=Path, help="PDF file to import")
+    import_parser.add_argument(
+        "--source",
+        choices=["dndbeyond", "roll20", "generic", "auto"],
+        default="auto",
+        help="Character sheet source type (default: auto-detect)",
+    )
+    import_parser.add_argument(
+        "--provider",
+        help="AI provider for parsing (gemini, anthropic, openai)",
+    )
+    import_parser.add_argument(
+        "--ruleset",
+        choices=["dnd2024", "dnd2014", "tov"],
+        default="dnd2024",
+        help="Target ruleset for imported character (default: dnd2024)",
+    )
+    import_parser.add_argument(
+        "--no-review",
+        action="store_true",
+        help="Skip review wizard and save directly",
+    )
+
     # Roll command
     roll_parser = subparsers.add_parser("roll", help="Roll dice")
     roll_parser.add_argument("dice", help="Dice notation (e.g., 2d6+5, 4d6kh3, adv)")
@@ -509,6 +534,182 @@ def cmd_roll(dice: str, times: int) -> int:
         print(f"\nSum: {sum(totals)}  Avg: {sum(totals) / len(totals):.1f}")
 
     return 0
+
+
+def cmd_import(
+    file: Path,
+    source: str,
+    provider: Optional[str],
+    ruleset: str,
+    no_review: bool,
+) -> int:
+    """Import character from PDF file using AI vision."""
+    import asyncio
+
+    # Check if file exists
+    if not file.exists():
+        print(f"Error: File not found: {file}")
+        return 1
+
+    if not file.suffix.lower() == ".pdf":
+        print(f"Error: File must be a PDF: {file}")
+        return 1
+
+    # Check if import dependencies are available
+    try:
+        from dnd_manager.import_char import PDFReader, PDFReaderError, is_import_available
+        from dnd_manager.import_char.pdf_reader import is_import_available
+    except ImportError:
+        print("Error: PDF import module not found.")
+        print("Install with: pip install 'ccvault[import]'")
+        return 1
+
+    if not is_import_available():
+        print("Error: PDF import dependencies not available.")
+        print("Install with: pip install 'ccvault[import]'")
+        print("This requires either pdf2image (with system poppler) or PyMuPDF.")
+        return 1
+
+    # Get AI provider
+    from dnd_manager.ai import get_provider, get_default_provider
+
+    if provider:
+        ai = get_provider(provider)
+    else:
+        ai = get_default_provider()
+
+    if not ai:
+        print("Error: No AI provider available.")
+        print("Configure an API key for Gemini, Claude, or GPT-4.")
+        return 1
+
+    if not ai.supports_vision():
+        print(f"Error: Provider '{ai.name}' does not support vision.")
+        print("Use --provider with gemini, anthropic, or openai.")
+        return 1
+
+    async def do_import() -> int:
+        from dnd_manager.import_char import PDFReader, CharacterSheetParser, ImportSession
+
+        print(f"Importing character from: {file}")
+        print(f"Using AI provider: {ai.name}")
+        print()
+
+        # Convert PDF to images
+        print("Converting PDF to images...")
+        try:
+            reader = PDFReader(dpi=150, max_pages=3)
+            images = reader.convert_to_image_bytes(file)
+            print(f"  Converted {len(images)} page(s)")
+        except Exception as e:
+            print(f"Error reading PDF: {e}")
+            return 1
+
+        # Parse with AI vision
+        print("Parsing character sheet with AI...")
+        try:
+            parser = CharacterSheetParser(provider_name=provider)
+            parsed_data = await parser.parse_full_sheet(images, source)
+        except Exception as e:
+            print(f"Error parsing character sheet: {e}")
+            return 1
+
+        # Show parsed summary
+        print()
+        print("═══ Parsed Character Data ═══")
+        print()
+
+        if parsed_data.name:
+            print(f"Name: {parsed_data.name}")
+        if parsed_data.class_name:
+            class_info = parsed_data.class_name
+            if parsed_data.level:
+                class_info = f"Level {parsed_data.level} {class_info}"
+            if parsed_data.subclass:
+                class_info += f" ({parsed_data.subclass})"
+            print(f"Class: {class_info}")
+        if parsed_data.species:
+            print(f"Species: {parsed_data.species}")
+        if parsed_data.background:
+            print(f"Background: {parsed_data.background}")
+
+        print()
+        print("Ability Scores:")
+        for ability in ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]:
+            val = getattr(parsed_data, ability)
+            if val is not None:
+                abbr = ability[:3].upper()
+                print(f"  {abbr}: {val}")
+
+        print()
+
+        # Show confidence levels
+        low_confidence = parsed_data.get_low_confidence_fields()
+        if low_confidence:
+            print("Low confidence fields (may need review):")
+            for field in low_confidence:
+                conf = parsed_data.confidence.get(field, 0)
+                print(f"  - {field}: {conf:.0%}")
+            print()
+
+        # Create import session
+        session = ImportSession(
+            source_file=file,
+            source_type=source,
+            ruleset=ruleset,
+            parsed_data=parsed_data,
+        )
+
+        # Check completeness
+        is_complete, missing = session.is_complete()
+        if not is_complete:
+            print("Missing required fields:")
+            for field in missing:
+                print(f"  - {field}")
+            print()
+
+        if no_review:
+            # Save directly without review
+            if not is_complete:
+                print("Error: Cannot save incomplete character without review.")
+                print("Remove --no-review to use the review wizard.")
+                return 1
+
+            try:
+                character = session.to_character()
+                store = CharacterStore()
+                path = store.save(character)
+                print(f"Saved character: {character.name}")
+                print(f"  File: {path}")
+                return 0
+            except Exception as e:
+                print(f"Error saving character: {e}")
+                return 1
+        else:
+            # Launch TUI with import wizard
+            print("Launching review wizard...")
+            print("(Use --no-review to skip this step)")
+            # For now, save directly - TUI wizard will be added later
+            if is_complete:
+                try:
+                    character = session.to_character()
+                    store = CharacterStore()
+                    path = store.save(character)
+                    print()
+                    print(f"Saved character: {character.name}")
+                    print(f"  File: {path}")
+                    print()
+                    print("Run 'ccvault' to view and edit the character.")
+                    return 0
+                except Exception as e:
+                    print(f"Error saving character: {e}")
+                    return 1
+            else:
+                print("Error: Character data is incomplete.")
+                print("The review wizard (coming soon) will help you fill in missing fields.")
+                return 1
+
+    return asyncio.run(do_import())
 
 
 def cmd_ask(
@@ -1619,6 +1820,15 @@ def main() -> int:
 
     if args.command == "roll":
         return cmd_roll(args.dice, args.times)
+
+    if args.command == "import":
+        return cmd_import(
+            args.file,
+            args.source,
+            args.provider,
+            args.ruleset,
+            args.no_review,
+        )
 
     if args.command == "ask":
         return cmd_ask(

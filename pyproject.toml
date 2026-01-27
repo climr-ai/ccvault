@@ -1,6 +1,6 @@
 [project]
 name = "ccvault"
-version = "0.1.69"
+version = "0.1.70"
 description = "CLIMR Character Vault - A CLI-based D&D 5e character manager supporting 2014 PHB, 2024 PHB, and Tales of the Valiant rulesets"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -47,9 +47,15 @@ dev = [
 embeddings = [
     "sentence-transformers>=2.2.0",  # For semantic search (~80MB model)
 ]
+import = [
+    "pdf2image>=1.16.0",  # PDF to image conversion (requires system poppler)
+    "PyMuPDF>=1.24.0",    # Fallback pure-Python PDF handling
+]
 all = [
     "weasyprint>=60.0",
     "sentence-transformers>=2.2.0",
+    "pdf2image>=1.16.0",
+    "PyMuPDF>=1.24.0",
 ]
 
 [project.scripts]

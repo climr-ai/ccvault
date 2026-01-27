@@ -306,3 +306,41 @@ class AIProvider(ABC):
 
         response = await self.chat(messages, model=model)
         return response.content
+
+    def supports_vision(self) -> bool:
+        """Check if this provider supports image input (vision).
+
+        Returns:
+            True if the provider can process images, False otherwise.
+        """
+        return False
+
+    async def chat_with_images(
+        self,
+        messages: list[AIMessage],
+        images: list[bytes],
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> AIResponse:
+        """Send a chat request with images for vision processing.
+
+        Args:
+            messages: Conversation history (can be empty for single-turn)
+            images: List of image data (PNG or JPEG bytes)
+            system_prompt: Optional system prompt for instructions
+            model: Model to use (defaults to provider's default vision model)
+            max_tokens: Maximum tokens in response
+            temperature: Sampling temperature (0-1)
+
+        Returns:
+            Response from the AI after processing the images
+
+        Raises:
+            NotImplementedError: If the provider doesn't support vision
+        """
+        raise NotImplementedError(
+            f"Provider '{self.name}' does not support vision. "
+            "Use a vision-capable provider like Gemini, Claude, or GPT-4V."
+        )

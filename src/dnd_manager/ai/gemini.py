@@ -329,3 +329,98 @@ class GeminiProvider(AIProvider):
             finish_reason=finish_reason,
             tool_use=tool_use_blocks,
         )
+
+    def supports_vision(self) -> bool:
+        """Gemini supports vision/image input."""
+        return True
+
+    async def chat_with_images(
+        self,
+        messages: list[AIMessage],
+        images: list[bytes],
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> AIResponse:
+        """Send a chat request with images to Gemini.
+
+        Args:
+            messages: Conversation history (can be empty for single-turn)
+            images: List of image data (PNG or JPEG bytes)
+            system_prompt: Optional system prompt for instructions
+            model: Model to use (defaults to gemini-2.5-flash which supports vision)
+            max_tokens: Maximum tokens in response
+            temperature: Sampling temperature (0-1)
+
+        Returns:
+            Response from Gemini after processing the images
+        """
+        import base64
+        from google.genai import types
+
+        client = self._get_client()
+        model_name = model or self.default_model
+
+        # Build contents with images
+        parts = []
+
+        # Add images as inline_data parts
+        for img_data in images:
+            # Detect image type from magic bytes
+            mime_type = "image/png"
+            if img_data[:2] == b"\xff\xd8":
+                mime_type = "image/jpeg"
+            elif img_data[:4] == b"\x89PNG":
+                mime_type = "image/png"
+
+            parts.append({
+                "inline_data": {
+                    "mime_type": mime_type,
+                    "data": base64.b64encode(img_data).decode("utf-8"),
+                }
+            })
+
+        # Add text prompt requesting analysis
+        parts.append({
+            "text": "Please analyze these character sheet images and extract all character information."
+        })
+
+        # Build the contents list
+        contents = [{"role": "user", "parts": parts}]
+
+        # Add any prior messages
+        if messages:
+            system_instruction, prior_contents = self._build_contents(messages)
+            # Prepend prior contents (but system_prompt param takes precedence)
+            contents = prior_contents + contents
+            if system_prompt is None and system_instruction:
+                system_prompt = system_instruction
+
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+        response = await client.aio.models.generate_content(
+            model=model_name,
+            contents=contents,
+            config=config,
+        )
+
+        # Extract usage info if available
+        input_tokens = None
+        output_tokens = None
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            input_tokens = getattr(response.usage_metadata, "prompt_token_count", None)
+            output_tokens = getattr(response.usage_metadata, "candidates_token_count", None)
+
+        return AIResponse(
+            content=response.text or "",
+            model=model_name,
+            provider=self.name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            finish_reason=response.candidates[0].finish_reason.name if response.candidates else None,
+        )

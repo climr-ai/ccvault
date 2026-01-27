@@ -283,3 +283,100 @@ class AnthropicProvider(AIProvider):
                         converted.append({"role": "user", "content": content})
 
         return system_prompt, converted
+
+    def supports_vision(self) -> bool:
+        """Claude supports vision/image input."""
+        return True
+
+    async def chat_with_images(
+        self,
+        messages: list[AIMessage],
+        images: list[bytes],
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> AIResponse:
+        """Send a chat request with images to Claude.
+
+        Args:
+            messages: Conversation history (can be empty for single-turn)
+            images: List of image data (PNG or JPEG bytes)
+            system_prompt: Optional system prompt for instructions
+            model: Model to use (defaults to claude-3-5-haiku which supports vision)
+            max_tokens: Maximum tokens in response
+            temperature: Sampling temperature (0-1)
+
+        Returns:
+            Response from Claude after processing the images
+        """
+        import base64
+
+        client = self._get_client()
+        model_name = model or self.default_model
+
+        # Build content array with images
+        content = []
+
+        # Add images as base64-encoded data
+        for img_data in images:
+            # Detect image type from magic bytes
+            media_type = "image/png"
+            if img_data[:2] == b"\xff\xd8":
+                media_type = "image/jpeg"
+            elif img_data[:4] == b"\x89PNG":
+                media_type = "image/png"
+
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": base64.b64encode(img_data).decode("utf-8"),
+                },
+            })
+
+        # Add text prompt
+        content.append({
+            "type": "text",
+            "text": "Please analyze these character sheet images and extract all character information.",
+        })
+
+        # Build messages list
+        converted_messages = []
+
+        # Add prior messages if any (extract system prompt from them)
+        if messages:
+            extracted_system, prior_msgs = self._convert_messages(messages)
+            converted_messages.extend(prior_msgs)
+            if system_prompt is None and extracted_system:
+                system_prompt = extracted_system
+
+        # Add the image message
+        converted_messages.append({"role": "user", "content": content})
+
+        kwargs = {
+            "model": model_name,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": converted_messages,
+        }
+        if system_prompt:
+            kwargs["system"] = system_prompt
+
+        response = await client.messages.create(**kwargs)
+
+        # Extract text content
+        text_content = ""
+        for block in response.content:
+            if block.type == "text":
+                text_content += block.text
+
+        return AIResponse(
+            content=text_content,
+            model=model_name,
+            provider=self.name,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            finish_reason=response.stop_reason,
+        )
