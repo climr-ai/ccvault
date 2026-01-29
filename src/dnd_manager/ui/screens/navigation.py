@@ -23,6 +23,7 @@ class WelcomeScreen(Screen):
         Binding("n", "new_character", "New Character"),
         Binding("o", "open_character", "Open Character"),
         Binding("r", "resume_draft", "Resume Draft", show=False),
+        Binding("i", "import_character", "Import PDF", show=False),
         Binding("a", "ai_chat", "AI Chat"),
         Binding("q", "quit", "Quit"),
         Binding("left", "prev_button", "Previous", show=False),
@@ -33,9 +34,10 @@ class WelcomeScreen(Screen):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self.selected_index = 0
-        self.button_ids = ["btn-new", "btn-open", "btn-ai", "btn-quit"]
+        self.button_ids = ["btn-new", "btn-import", "btn-open", "btn-ai", "btn-quit"]
         self._draft_store = None
         self._has_draft = False
+        self._import_available = None
 
     @property
     def draft_store(self):
@@ -63,6 +65,7 @@ class WelcomeScreen(Screen):
             Horizontal(
                 Button("New Character", id="btn-new", variant="primary"),
                 Button("Resume Draft", id="btn-resume", variant="success"),
+                Button("Import PDF", id="btn-import", variant="default"),
                 Button("Open Character", id="btn-open", variant="default"),
                 Button("AI Chat", id="btn-ai", variant="warning"),
                 Button("Quit", id="btn-quit", variant="error"),
@@ -78,23 +81,41 @@ class WelcomeScreen(Screen):
         self._update_button_focus()
 
     def _check_for_draft(self) -> None:
-        """Check if there's a draft to resume."""
+        """Check if there's a draft to resume and if import is available."""
         draft_info = self.draft_store.get_draft_info()
         resume_btn = self.query_one("#btn-resume", Button)
+        import_btn = self.query_one("#btn-import", Button)
         notice = self.query_one("#draft-notice", Static)
 
+        # Check import availability
+        if self._import_available is None:
+            try:
+                from dnd_manager.import_char import is_import_available
+                self._import_available = is_import_available()
+            except ImportError:
+                self._import_available = False
+
+        # Build button list based on available features
+        base_buttons = ["btn-new"]
         if draft_info:
             self._has_draft = True
-            self.button_ids = ["btn-new", "btn-resume", "btn-open", "btn-ai", "btn-quit"]
+            base_buttons.append("btn-resume")
             resume_btn.display = True
-            # Show draft info
             notice.update(f"Draft: {draft_info['name']} ({draft_info['class']} {draft_info['species']}) - Press \\[R] to resume")
             notice.display = True
         else:
             self._has_draft = False
-            self.button_ids = ["btn-new", "btn-open", "btn-ai", "btn-quit"]
             resume_btn.display = False
             notice.display = False
+
+        if self._import_available:
+            base_buttons.append("btn-import")
+            import_btn.display = True
+        else:
+            import_btn.display = False
+
+        base_buttons.extend(["btn-open", "btn-ai", "btn-quit"])
+        self.button_ids = base_buttons
 
     def _update_button_focus(self) -> None:
         """Update which button appears focused."""
@@ -124,6 +145,8 @@ class WelcomeScreen(Screen):
             self.action_new_character()
         elif btn_id == "btn-resume":
             self.action_resume_draft()
+        elif btn_id == "btn-import":
+            self.action_import_character()
         elif btn_id == "btn-open":
             self.action_open_character()
         elif btn_id == "btn-ai":
@@ -154,6 +177,11 @@ class WelcomeScreen(Screen):
         """Open an existing character."""
         self.app.action_open_character(return_to_dashboard=False)
 
+    def action_import_character(self) -> None:
+        """Open import file picker."""
+        from dnd_manager.ui.screens.import_wizard import ImportFilePickerScreen
+        self.app.push_screen(ImportFilePickerScreen())
+
     def action_quit(self) -> None:
         """Quit the application."""
         self.app.exit()
@@ -175,6 +203,8 @@ class WelcomeScreen(Screen):
             self.action_new_character()
         elif event.button.id == "btn-resume":
             self.action_resume_draft()
+        elif event.button.id == "btn-import":
+            self.action_import_character()
         elif event.button.id == "btn-open":
             self.action_open_character()
         elif event.button.id == "btn-ai":
