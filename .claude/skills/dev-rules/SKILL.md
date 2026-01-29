@@ -8,7 +8,7 @@ description: Development rules that must always be followed. Enforces commit dis
 These rules MUST be followed for all development work in this repository:
 
 ## Commit Discipline
-- Never commit changes unless explicitly requested by the user
+- Always commit changes - commits provide valuable review points
 - Always run tests before committing
 - Use meaningful commit messages that describe WHY, not just WHAT
 - Never use `--no-verify` or skip hooks unless explicitly requested
