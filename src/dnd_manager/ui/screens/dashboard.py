@@ -262,12 +262,12 @@ class MainDashboard(ScreenContextMixin, Screen):
         self.app.action_open_character(return_to_dashboard=True)
 
     def action_back(self) -> None:
-        """Go back to welcome screen."""
-        from dnd_manager.ui.screens.navigation import WelcomeScreen
-        # Pop back to base, then push welcome screen
+        """Go back to character select screen."""
+        from dnd_manager.ui.screens.navigation import CharacterSelectScreen
+        # Pop back to base, then push character select screen
         while len(self.app.screen_stack) > 1:
             self.app.pop_screen()
-        self.app.push_screen(WelcomeScreen())
+        self.app.push_screen(CharacterSelectScreen())
 
     def action_home(self) -> None:
         """Return to the welcome screen."""
