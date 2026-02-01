@@ -322,7 +322,7 @@ class LevelManagementScreen(Screen):
             if level in self.hp_choices:
                 lines.append(f"    Level {level}: +{self.hp_choices[level]} HP ✓")
             else:
-                lines.append(f"    Level {level}: (choose) [R]oll or [A]verage")
+                lines.append(f"    Level {level}: (choose) \\[R]oll or \\[A]verage")
                 self.configuring_level = level
                 break
         else:
@@ -360,10 +360,10 @@ class LevelManagementScreen(Screen):
                     abilities = ", ".join(a.upper() for a in choice)
                     lines.append(f"    Level {level}: +1 to {abilities} ✓")
             else:
-                lines.append(f"    Level {level}: [F] Feat or [1-6] Abilities")
+                lines.append(f"    Level {level}: \\[F] Feat or \\[1-6] Abilities")
 
         lines.append("")
-        lines.append("  [1]STR [2]DEX [3]CON [4]INT [5]WIS [6]CHA")
+        lines.append("  \\[1]STR \\[2]DEX \\[3]CON \\[4]INT \\[5]WIS \\[6]CHA")
 
         asi_widget.update("\n".join(lines))
 
@@ -574,7 +574,7 @@ class LevelManagementScreen(Screen):
                 # Check HP choices
                 for level in range(self.original_level + 1, self.target_level + 1):
                     if level not in self.hp_choices:
-                        self.notify(f"Choose HP for level {level} first ([R]oll or [A]verage)", severity="error")
+                        self.notify(f"Choose HP for level {level} first (\\[R]oll or \\[A]verage)", severity="error")
                         return
 
                 # Check ASI choices
