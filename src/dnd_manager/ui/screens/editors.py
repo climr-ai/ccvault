@@ -841,91 +841,209 @@ class AbilityPickScreen(ListNavigationMixin, Screen):
 
 
 class InfoEditorScreen(Screen):
-    """Screen for editing character info (name, alignment, background)."""
+    """Screen for editing character info with two-pane navigation."""
 
     BINDINGS = [
         Binding("escape", "back", "Back"),
         Binding("s", "save", "Save"),
-        Binding("up", "prev_alignment", "Prev Alignment", show=False),
-        Binding("down", "next_alignment", "Next Alignment", show=False),
-        Binding("left", "prev_background", "Prev Background", show=False),
-        Binding("right", "next_background", "Next Background", show=False),
+        Binding("tab", "switch_pane", "Switch Pane"),
+        Binding("up", "move_up", "Up", show=False),
+        Binding("down", "move_down", "Down", show=False),
+        Binding("enter", "edit_field", "Edit"),
     ]
 
     def __init__(self, character: "Character", **kwargs) -> None:
         super().__init__(**kwargs)
         self.character = character
+
+        # Edited values
         self.edited_name = character.name
         self.edited_alignment = character.alignment
-        self._alignments = list(Alignment)
-        self._alignment_index = self._alignments.index(character.alignment)
+        self.edited_background = character.background or ""
+        self.edited_species = character.species or ""
+        self.edited_subspecies = character.subspecies or ""
 
-        # Load backgrounds for this ruleset
-        from dnd_manager.data import get_backgrounds_for_ruleset
+        # Load data for this ruleset
+        from dnd_manager.data import get_backgrounds_for_ruleset, get_species_for_ruleset, get_subspecies
+
         backgrounds = get_backgrounds_for_ruleset(character.meta.ruleset.value)
         self._backgrounds = sorted(backgrounds.keys())
-        self.edited_background = character.background or (self._backgrounds[0] if self._backgrounds else "")
-        self._background_index = self._backgrounds.index(self.edited_background) if self.edited_background in self._backgrounds else 0
+
+        species_list = get_species_for_ruleset(character.meta.ruleset.value)
+        self._species = sorted([s.name for s in species_list])
+
+        # Fields that can be edited
+        self._fields = ["Name", "Alignment", "Background", f"{character.get_species_term()}"]
+        self._selected_field = 0
+        self._active_pane = "left"  # "left" or "right"
+        self._editing_name = False
 
     def compose(self) -> ComposeResult:
+        from textual.widgets import Input
         yield Header()
         yield Container(
             Static("Edit Character Info", classes="title"),
-            Static("\\[S] Save  \\[Esc] Cancel", classes="subtitle"),
-            Vertical(
-                Static("Name:", classes="panel-title"),
-                Input(value=self.character.name, id="name-input"),
-                Static(""),
-                Static("Alignment: (use ↑↓ to change)", classes="panel-title"),
-                Static(self.edited_alignment.display_name, id="alignment-display", classes="hp-display"),
-                Static(""),
-                Static("Background: (use ←→ to change)", classes="panel-title"),
-                Static(self.edited_background, id="background-display", classes="hp-display"),
-                Static(""),
-                Static(f"Class: {self.character.primary_class.name} {self.character.primary_class.level}", classes="hint"),
-                Static(f"{self.character.get_species_term()}: {self.character.species or 'Not set'}", classes="hint"),
-                classes="panel hp-editor-panel",
+            Static("↑↓ Navigate  Tab Switch Pane  Enter Edit  \\[S] Save  \\[Esc] Cancel", classes="subtitle"),
+            Horizontal(
+                Vertical(
+                    Static("FIELDS", classes="panel-title"),
+                    VerticalScroll(id="fields-list", classes="spell-list"),
+                    classes="panel browser-panel",
+                ),
+                Vertical(
+                    Static("EDIT", classes="panel-title"),
+                    VerticalScroll(id="edit-pane", classes="spell-details"),
+                    classes="panel browser-panel",
+                ),
+                classes="browser-row",
             ),
             id="editor-container",
         )
         yield Footer()
 
     def on_mount(self) -> None:
-        """Focus the name input."""
-        self.query_one("#name-input", Input).focus()
+        """Initialize the screen."""
+        self._refresh_fields_list()
+        self._refresh_edit_pane()
+
+    def _refresh_fields_list(self) -> None:
+        """Refresh the left pane with field list."""
+        from dnd_manager.ui.screens.widgets import ClickableListItem
+
+        list_widget = self.query_one("#fields-list", VerticalScroll)
+        list_widget.remove_children()
+
+        for i, field in enumerate(self._fields):
+            selected = i == self._selected_field and self._active_pane == "left"
+            classes = "spell-item selected" if selected else "spell-item"
+
+            # Show current value
+            if field == "Name":
+                value = self.edited_name
+            elif field == "Alignment":
+                value = self.edited_alignment.display_name
+            elif field == "Background":
+                value = self.edited_background or "Not set"
+            else:  # Species
+                value = self.edited_species or "Not set"
+
+            list_widget.mount(
+                ClickableListItem(f"{field}: {value}", classes=classes)
+            )
+
+    def _refresh_edit_pane(self) -> None:
+        """Refresh the right pane with editing controls for selected field."""
+        from textual.widgets import Input
+
+        edit_pane = self.query_one("#edit-pane", VerticalScroll)
+        edit_pane.remove_children()
+
+        field = self._fields[self._selected_field]
+
+        if field == "Name":
+            edit_pane.mount(Static("Enter new name:", classes="panel-title"))
+            edit_pane.mount(Input(value=self.edited_name, id="name-input"))
+            if self._editing_name or self._active_pane == "right":
+                try:
+                    self.query_one("#name-input", Input).focus()
+                except:
+                    pass
+
+        elif field == "Alignment":
+            edit_pane.mount(Static("Select alignment (↑↓):", classes="panel-title"))
+            for alignment in Alignment:
+                selected = alignment == self.edited_alignment and self._active_pane == "right"
+                classes = "spell-item selected" if selected else "spell-item"
+                edit_pane.mount(Static(f"  {alignment.display_name}", classes=classes))
+
+        elif field == "Background":
+            edit_pane.mount(Static("Select background (↑↓):", classes="panel-title"))
+            for bg in self._backgrounds[:20]:  # Limit to prevent overflow
+                selected = bg == self.edited_background and self._active_pane == "right"
+                classes = "spell-item selected" if selected else "spell-item"
+                edit_pane.mount(Static(f"  {bg}", classes=classes))
+
+        else:  # Species
+            edit_pane.mount(Static(f"Select {field.lower()} (↑↓):", classes="panel-title"))
+            for species in self._species[:20]:  # Limit to prevent overflow
+                selected = species == self.edited_species and self._active_pane == "right"
+                classes = "spell-item selected" if selected else "spell-item"
+                edit_pane.mount(Static(f"  {species}", classes=classes))
+
+    def action_switch_pane(self) -> None:
+        """Switch between left and right pane."""
+        self._active_pane = "right" if self._active_pane == "left" else "left"
+        self._editing_name = False
+        self._refresh_fields_list()
+        self._refresh_edit_pane()
+
+    def action_move_up(self) -> None:
+        """Move selection up."""
+        if self._active_pane == "left":
+            self._selected_field = (self._selected_field - 1) % len(self._fields)
+            self._refresh_fields_list()
+            self._refresh_edit_pane()
+        else:
+            # Move within right pane
+            field = self._fields[self._selected_field]
+            if field == "Alignment":
+                alignments = list(Alignment)
+                idx = alignments.index(self.edited_alignment)
+                self.edited_alignment = alignments[(idx - 1) % len(alignments)]
+                self._refresh_fields_list()
+                self._refresh_edit_pane()
+            elif field == "Background":
+                if self._backgrounds:
+                    idx = self._backgrounds.index(self.edited_background) if self.edited_background in self._backgrounds else 0
+                    self.edited_background = self._backgrounds[(idx - 1) % len(self._backgrounds)]
+                    self._refresh_fields_list()
+                    self._refresh_edit_pane()
+            else:  # Species
+                if self._species:
+                    idx = self._species.index(self.edited_species) if self.edited_species in self._species else 0
+                    self.edited_species = self._species[(idx - 1) % len(self._species)]
+                    self._refresh_fields_list()
+                    self._refresh_edit_pane()
+
+    def action_move_down(self) -> None:
+        """Move selection down."""
+        if self._active_pane == "left":
+            self._selected_field = (self._selected_field + 1) % len(self._fields)
+            self._refresh_fields_list()
+            self._refresh_edit_pane()
+        else:
+            # Move within right pane
+            field = self._fields[self._selected_field]
+            if field == "Alignment":
+                alignments = list(Alignment)
+                idx = alignments.index(self.edited_alignment)
+                self.edited_alignment = alignments[(idx + 1) % len(alignments)]
+                self._refresh_fields_list()
+                self._refresh_edit_pane()
+            elif field == "Background":
+                if self._backgrounds:
+                    idx = self._backgrounds.index(self.edited_background) if self.edited_background in self._backgrounds else 0
+                    self.edited_background = self._backgrounds[(idx + 1) % len(self._backgrounds)]
+                    self._refresh_fields_list()
+                    self._refresh_edit_pane()
+            else:  # Species
+                if self._species:
+                    idx = self._species.index(self.edited_species) if self.edited_species in self._species else 0
+                    self.edited_species = self._species[(idx + 1) % len(self._species)]
+                    self._refresh_fields_list()
+                    self._refresh_edit_pane()
+
+    def action_edit_field(self) -> None:
+        """Activate editing for the selected field."""
+        if self._active_pane == "left":
+            self._active_pane = "right"
+            self._refresh_fields_list()
+            self._refresh_edit_pane()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Track name changes."""
         if event.input.id == "name-input":
             self.edited_name = event.value
-
-    def action_prev_alignment(self) -> None:
-        """Cycle to previous alignment."""
-        self._alignment_index = (self._alignment_index - 1) % len(self._alignments)
-        self.edited_alignment = self._alignments[self._alignment_index]
-        self.query_one("#alignment-display", Static).update(self.edited_alignment.display_name)
-
-    def action_next_alignment(self) -> None:
-        """Cycle to next alignment."""
-        self._alignment_index = (self._alignment_index + 1) % len(self._alignments)
-        self.edited_alignment = self._alignments[self._alignment_index]
-        self.query_one("#alignment-display", Static).update(self.edited_alignment.display_name)
-
-    def action_prev_background(self) -> None:
-        """Cycle to previous background."""
-        if not self._backgrounds:
-            return
-        self._background_index = (self._background_index - 1) % len(self._backgrounds)
-        self.edited_background = self._backgrounds[self._background_index]
-        self.query_one("#background-display", Static).update(self.edited_background)
-
-    def action_next_background(self) -> None:
-        """Cycle to next background."""
-        if not self._backgrounds:
-            return
-        self._background_index = (self._background_index + 1) % len(self._backgrounds)
-        self.edited_background = self._backgrounds[self._background_index]
-        self.query_one("#background-display", Static).update(self.edited_background)
 
     def action_save(self) -> None:
         """Save character info changes."""
@@ -937,6 +1055,7 @@ class InfoEditorScreen(Screen):
         self.character.name = name
         self.character.alignment = self.edited_alignment
         self.character.background = self.edited_background
+        self.character.species = self.edited_species
         self.app.save_character()
         self.notify("Character info saved!")
         self.app.pop_screen()
