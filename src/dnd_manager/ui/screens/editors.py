@@ -841,13 +841,15 @@ class AbilityPickScreen(ListNavigationMixin, Screen):
 
 
 class InfoEditorScreen(Screen):
-    """Screen for editing character info (name, alignment)."""
+    """Screen for editing character info (name, alignment, background)."""
 
     BINDINGS = [
         Binding("escape", "back", "Back"),
         Binding("s", "save", "Save"),
         Binding("up", "prev_alignment", "Prev Alignment", show=False),
         Binding("down", "next_alignment", "Next Alignment", show=False),
+        Binding("left", "prev_background", "Prev Background", show=False),
+        Binding("right", "next_background", "Next Background", show=False),
     ]
 
     def __init__(self, character: "Character", **kwargs) -> None:
@@ -857,6 +859,13 @@ class InfoEditorScreen(Screen):
         self.edited_alignment = character.alignment
         self._alignments = list(Alignment)
         self._alignment_index = self._alignments.index(character.alignment)
+
+        # Load backgrounds for this ruleset
+        from dnd_manager.data import get_backgrounds_for_ruleset
+        backgrounds = get_backgrounds_for_ruleset(character.meta.ruleset.value)
+        self._backgrounds = sorted(backgrounds.keys())
+        self.edited_background = character.background or (self._backgrounds[0] if self._backgrounds else "")
+        self._background_index = self._backgrounds.index(self.edited_background) if self.edited_background in self._backgrounds else 0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -870,9 +879,11 @@ class InfoEditorScreen(Screen):
                 Static("Alignment: (use ↑↓ to change)", classes="panel-title"),
                 Static(self.edited_alignment.display_name, id="alignment-display", classes="hp-display"),
                 Static(""),
+                Static("Background: (use ←→ to change)", classes="panel-title"),
+                Static(self.edited_background, id="background-display", classes="hp-display"),
+                Static(""),
                 Static(f"Class: {self.character.primary_class.name} {self.character.primary_class.level}", classes="hint"),
                 Static(f"{self.character.get_species_term()}: {self.character.species or 'Not set'}", classes="hint"),
-                Static(f"Background: {self.character.background or 'Not set'}", classes="hint"),
                 classes="panel hp-editor-panel",
             ),
             id="editor-container",
@@ -900,6 +911,22 @@ class InfoEditorScreen(Screen):
         self.edited_alignment = self._alignments[self._alignment_index]
         self.query_one("#alignment-display", Static).update(self.edited_alignment.display_name)
 
+    def action_prev_background(self) -> None:
+        """Cycle to previous background."""
+        if not self._backgrounds:
+            return
+        self._background_index = (self._background_index - 1) % len(self._backgrounds)
+        self.edited_background = self._backgrounds[self._background_index]
+        self.query_one("#background-display", Static).update(self.edited_background)
+
+    def action_next_background(self) -> None:
+        """Cycle to next background."""
+        if not self._backgrounds:
+            return
+        self._background_index = (self._background_index + 1) % len(self._backgrounds)
+        self.edited_background = self._backgrounds[self._background_index]
+        self.query_one("#background-display", Static).update(self.edited_background)
+
     def action_save(self) -> None:
         """Save character info changes."""
         name = self.edited_name.strip()
@@ -909,6 +936,7 @@ class InfoEditorScreen(Screen):
 
         self.character.name = name
         self.character.alignment = self.edited_alignment
+        self.character.background = self.edited_background
         self.app.save_character()
         self.notify("Character info saved!")
         self.app.pop_screen()
