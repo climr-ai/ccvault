@@ -665,6 +665,17 @@ class SpellBrowserScreen(ListNavigationMixin, Screen):
 
         class_name = self.character.primary_class.name
 
+        # Check for Magic Initiate feat if primary class has no spells
+        if not get_spells_by_class(class_name):
+            # Look for Magic Initiate feat
+            for feature in self.character.features:
+                if feature.name.startswith("Magic Initiate"):
+                    # Extract class name from feat (e.g., "Magic Initiate (Druid)" -> "Druid")
+                    if "(" in feature.name and ")" in feature.name:
+                        feat_class = feature.name.split("(")[1].split(")")[0].strip()
+                        class_name = feat_class
+                        break
+
         # Get spells for this class
         class_spells = get_spells_by_class(class_name)
 
