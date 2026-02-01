@@ -343,7 +343,7 @@ class LevelManagementScreen(Screen):
             asi_widget.update("")
             return
 
-        asi_levels = ruleset.get_asi_levels(self.character.primary_class.name)
+        asi_levels = ruleset.get_asi_levels()
         needed_asis = [lvl for lvl in range(self.original_level + 1, self.target_level + 1) if lvl in asi_levels]
 
         if not needed_asis:
@@ -501,7 +501,7 @@ class LevelManagementScreen(Screen):
         if not ruleset:
             return None
 
-        asi_levels = ruleset.get_asi_levels(self.character.primary_class.name)
+        asi_levels = ruleset.get_asi_levels()
         for level in range(self.original_level + 1, self.target_level + 1):
             if level in asi_levels and level not in self.asi_choices:
                 return level
@@ -580,7 +580,7 @@ class LevelManagementScreen(Screen):
                 # Check ASI choices
                 ruleset = self.character.get_ruleset()
                 if ruleset:
-                    asi_levels = ruleset.get_asi_levels(self.character.primary_class.name)
+                    asi_levels = ruleset.get_asi_levels()
                     for level in range(self.original_level + 1, self.target_level + 1):
                         if level in asi_levels:
                             if level not in self.asi_choices or len(self.asi_choices[level]) < 2:
