@@ -77,7 +77,7 @@ class CharacterEditorScreen(Screen):
         hp = c.combat.hit_points
         container = Vertical(classes="combat-editor")
         container.compose_add_child(Static(f"  HP: {hp.current}/{hp.maximum} (temp: {hp.temporary})", classes="editor-row"))
-        container.compose_add_child(Static(f"  AC: {c.combat.total_ac} (base: {c.combat.armor_class.base})", classes="editor-row"))
+        container.compose_add_child(Static(f"  AC: {c.combat.total_ac} (base: {c.combat.armor_class})", classes="editor-row"))
         container.compose_add_child(Static(f"  Speed: {c.combat.total_speed} ft", classes="editor-row"))
         container.compose_add_child(Static(f"  Hit Dice: {c.combat.hit_dice.remaining}/{c.combat.hit_dice.total}", classes="editor-row"))
         container.compose_add_child(Static(""))
