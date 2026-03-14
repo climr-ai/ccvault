@@ -21,6 +21,7 @@ from dnd_manager.data import (
     get_feat,
     get_general_feats,
     get_origin_feats,
+    get_skill_description,
     get_species,
     get_subraces,
     skill_name_to_enum,
